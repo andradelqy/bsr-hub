@@ -1,0 +1,32 @@
+# Dependencies and local tooling
+node_modules/
+.tooling/
+
+# Private runtime configuration and credentials
+config.js
+.env
+.env.*
+!.env.example
+
+# Generated web, Electron and Cloud Code deployment artifacts
+dist/
+dist-*/
+web-dist/
+cloud-upload/
+cloud-upload-v*/
+
+# Native bridge build outputs and fixtures
+native/**/bin/
+native/**/obj/
+native/**/dist/
+native/**/fixtures/
+
+# Test screenshots and local runtime files
+tests/artifacts/
+*.log
+*.blockmap
+*.asar
+
+# OS/editor files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://parseapi.back4app.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" />
+  <title>Autenticando · BSR Hub</title>
+  <link rel="icon" href="assets/foto/favicon.png" />
+  <style>
+    *{box-sizing:border-box}html,body{min-height:100%;margin:0;font-family:Inter,"Segoe UI",sans-serif;background:#080c11;color:#f4f7fa}body{display:grid;place-items:center;padding:24px;border-top:2px solid #4bb957}.card{width:min(420px,100%);padding:42px;border:1px solid #273542;border-radius:20px;background:#10161d;text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.5)}img{width:64px;height:64px;object-fit:contain}h1{margin:20px 0 8px;font-size:1.15rem}p{margin:0;color:#7f8d9a;font-size:.65rem;line-height:1.6}.loader{width:170px;height:3px;margin:25px auto 0;overflow:hidden;background:#1c2732}.loader:after{content:"";display:block;width:45%;height:100%;background:#4bb957;animation:load .8s ease infinite alternate}@keyframes load{from{transform:translateX(-100%)}to{transform:translateX(220%)}}.error{color:#ed6672}.button{min-height:40px;display:inline-flex;align-items:center;padding:0 16px;margin-top:20px;border-radius:20px;color:#fff;background:#4bb957;text-decoration:none;font-size:.62rem;font-weight:800}
+  </style>
+</head>
+<body>
+  <main class="card"><img src="assets/foto/favicon.png" alt=""><h1 id="title">Validando identidade</h1><p id="status">A Steam respondeu. O Back4App está verificando a assinatura da autenticação.</p><div class="loader" id="loader"></div><div id="action"></div></main>
+  <script src="config.js"></script>
+  <script src="api.js?v=20"></script>
+  <script>
+    (async()=>{
+      const title=document.getElementById('title'),status=document.getElementById('status'),loader=document.getElementById('loader'),action=document.getElementById('action');
+      try{
+        const callbackUrl=location.href;
+        const received=new URL(callbackUrl).searchParams.get('state');
+        const expected=sessionStorage.getItem('bsr_steam_state');
+        if(!expected||received!==expected)throw new Error('A tentativa de login não corresponde a este navegador. Reinicie a conexão pela tela de login.');
+        sessionStorage.removeItem('bsr_steam_state');
+        history.replaceState(null,'',location.pathname);
+        const user=await window.BSR_API.authenticateSteam(callbackUrl);
+        localStorage.setItem('steamId',user.steamId);
+        localStorage.setItem('steamName',user.displayName||`Piloto_${user.steamId.slice(-6)}`);
+        if(user.avatar)localStorage.setItem('steamAvatar',user.avatar);else localStorage.removeItem('steamAvatar');
+        ['steamId','steamName','steamAvatar'].forEach(key=>sessionStorage.removeItem(key));
+        title.textContent='Cockpit conectado';status.textContent=`Bem-vindo, ${user.displayName||'piloto'}. Abrindo o BSR Hub…`;
+        setTimeout(()=>location.replace('index.html#/dashboard'),700);
+      }catch(error){
+        loader.remove();title.textContent='Não foi possível entrar';status.className='error';status.textContent=error.message||'A autenticação não pôde ser validada.';action.innerHTML='<a class="button" href="login.html">Tentar novamente</a>';
+      }
+    })();
+  </script>
+</body>
+</html>

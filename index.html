@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#080c11" />
+  <meta name="description" content="BSR Hub — competição, carreira e comunidade em um único cockpit." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://parseapi.back4app.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>BSR Hub</title>
+  <script>document.documentElement.classList.toggle('electron-shell', Boolean(window.electronAPI));</script>
+  <link rel="icon" href="assets/foto/favicon.png" />
+  <link rel="stylesheet" href="app/app.css?v=20" />
+</head>
+<body>
+  <div class="window-bar" id="windowBar">
+    <span>BSR RACING HUB</span>
+    <div><button type="button" data-window="minimize" aria-label="Minimizar">—</button><button type="button" data-window="maximize" aria-label="Maximizar">□</button><button type="button" class="window-close" data-window="close" aria-label="Fechar">×</button></div>
+  </div>
+  <div id="bootScreen" class="boot-screen">
+    <img src="assets/foto/favicon.png" alt="" />
+    <div><strong>BSR HUB</strong><span>INICIALIZANDO SERVIÇOS</span></div>
+    <i></i>
+  </div>
+
+  <div id="app" class="app-shell" aria-busy="true">
+    <header class="launcher-header">
+      <a class="brand" href="#/dashboard" aria-label="BSR Hub">
+        <img src="assets/foto/favicon.png" alt="" />
+        <span><b>BSR</b><small>RACING HUB</small></span>
+      </a>
+      <nav id="mainNav" class="main-nav" aria-label="Navegação principal"></nav>
+        <div class="topbar-tools">
+          <button class="tool-button search-trigger" id="searchTrigger" type="button" aria-label="Buscar no hub" title="Buscar · Ctrl K"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg></button>
+          <button class="tool-button" id="syncButton" type="button" aria-label="Sincronizar" title="Sincronizar">↻</button>
+          <button class="tool-button notification-button" id="notificationButton" type="button" aria-label="Notificações" title="Notificações">♢<i id="notificationDot"></i></button>
+          <a class="auth-button" id="authButton" href="login.html">Entrar</a>
+          <button class="account-button is-hidden" id="accountButton" type="button">
+            <img id="accountAvatar" alt="" />
+            <span><small>PILOTO</small><b id="accountName">—</b></span><i>⌄</i>
+          </button>
+        </div>
+    </header>
+    <section class="workspace">
+      <div class="route-heading sr-only"><span id="routeEyebrow">CENTRAL DO PILOTO</span><h1 id="routeTitle">Início</h1></div>
+      <main id="view" class="view" tabindex="-1"></main>
+    </section>
+    <footer class="launcher-footer"><div class="service-state" id="serviceState" role="status"><i></i><span><b>BSR Network</b><small>Conectando…</small></span></div><span>BRASIL SIM RACING <i>/</i> SEU PRÓXIMO GRID.</span><a href="#/settings">Configurações ↗</a></footer>
+  </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+  <aside id="drawer" class="drawer" aria-hidden="true" aria-label="Detalhes"></aside>
+  <div id="modalRoot"></div>
+  <div id="toastRoot" class="toast-root" aria-live="polite"></div>
+  <div id="commandPalette" class="command-palette" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="api.js?v=20"></script>
+  <script src="app/core.js?v=19"></script>
+  <script src="app/race-processor.js?v=2"></script>
+  <script src="app/content.js?v=4"></script>
+  <script src="app/components.js?v=20"></script>
+  <script src="app/views.js?v=21"></script>
+  <script src="app/app.js?v=19"></script>
+</body>
+</html>

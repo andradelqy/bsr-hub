@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://parseapi.back4app.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" />
+  <title>Conectar Steam · BSR Hub</title>
+  <link rel="icon" href="assets/foto/favicon.png" />
+  <style>
+    *{box-sizing:border-box}html,body{min-height:100%;margin:0;font-family:Inter,"Segoe UI",sans-serif;background:#080c11;color:#f4f7fa}body{display:grid;place-items:center;padding:24px;overflow:hidden}.background{position:fixed;inset:0;background:linear-gradient(90deg,rgba(8,12,17,.98),rgba(8,12,17,.72)),url('assets/video/stockcar.png') center/cover;filter:saturate(.62)}.background:after{content:"";position:absolute;inset:0;border-top:2px solid #4bb957}.login{position:relative;width:min(440px,100%);padding:38px;border:1px solid #273542;border-radius:20px;background:rgba(12,18,24,.95);box-shadow:0 35px 100px rgba(0,0,0,.55);backdrop-filter:blur(18px)}.brand{display:flex;align-items:center;gap:12px;margin-bottom:38px}.brand img{width:45px;height:45px;object-fit:contain}.brand span{display:grid}.brand b{letter-spacing:.15em}.brand small{margin-top:4px;color:#778695;font-size:.52rem;letter-spacing:.22em}.eyebrow{color:#f2c300;font-size:.52rem;font-weight:800;letter-spacing:.18em}.login h1{margin:8px 0 11px;font-size:1.65rem}.login p{margin:0;color:#8998a6;font-size:.68rem;line-height:1.65}.steam{width:100%;min-height:49px;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:28px;border:0;border-radius:24px;color:#fff;background:#4bb957;cursor:pointer;font-weight:800;font-size:.7rem;box-shadow:0 10px 28px rgba(75,185,87,.18)}.steam:hover{background:#59c765}.notes{display:grid;gap:9px;margin-top:25px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)}.notes span{display:flex;gap:8px;color:#778695;font-size:.55rem}.notes i{color:#4bb957;font-style:normal}.back{display:inline-block;margin-top:22px;color:#8b99a7;font-size:.58rem}.error{margin-top:14px!important;color:#ed6672!important;text-align:center}
+  </style>
+</head>
+<body>
+  <div class="background"></div>
+  <main class="login">
+    <div class="brand"><img src="assets/foto/favicon.png" alt=""><span><b>BSR</b><small>RACING HUB</small></span></div>
+    <span class="eyebrow">IDENTIDADE DO PILOTO</span>
+    <h1>Conecte seu cockpit</h1>
+    <p>A Steam confirma sua identidade. O BSR Hub nunca recebe ou armazena sua senha.</p>
+    <button class="steam" id="steamLogin" type="button">▣ Continuar com Steam</button>
+    <p class="error" id="loginError"></p>
+    <div class="notes"><span><i>✓</i> Perfil, rating e Safety Rating unificados</span><span><i>✓</i> Inscrições vinculadas ao piloto correto</span><span><i>✓</i> Sessão validada pelo Back4App Cloud Code</span></div>
+    <a class="back" href="index.html#/dashboard">← Voltar ao hub</a>
+  </main>
+  <script src="config.js"></script>
+  <script src="api.js?v=20"></script>
+  <script>
+    const button=document.getElementById('steamLogin');
+    const errorNode=document.getElementById('loginError');
+    function saveDriver(user){
+      localStorage.setItem('steamId',user.steamId);
+      localStorage.setItem('steamName',user.displayName||`Piloto_${user.steamId.slice(-6)}`);
+      if(user.avatar)localStorage.setItem('steamAvatar',user.avatar);else localStorage.removeItem('steamAvatar');
+      ['steamId','steamName','steamAvatar'].forEach(key=>sessionStorage.removeItem(key));
+    }
+    button.addEventListener('click',async()=>{
+      button.disabled=true;button.textContent='Iniciando conexão…';errorNode.textContent='';
+      try{
+        const challenge=await window.BSR_API.beginSteamAuth();
+        if(!challenge?.state)throw new Error('O servidor não criou o desafio de autenticação.');
+        if(window.electronAPI?.startSteamLogin){
+          const callbackUrl=await window.electronAPI.startSteamLogin(challenge.state);
+          const user=await window.BSR_API.authenticateSteam(callbackUrl);
+          saveDriver(user);location.replace('index.html#/dashboard');return;
+        }
+        if(!location.protocol.startsWith('http'))throw new Error('Abra o BSR Hub pelo aplicativo ou pelo endereço oficial.');
+        sessionStorage.setItem('bsr_steam_state',challenge.state);
+        const returnUrl=new URL('steam_callback.html',location.href);returnUrl.searchParams.set('state',challenge.state);
+        const realm=new URL(returnUrl).origin;
+        const params=new URLSearchParams({'openid.ns':'http://specs.openid.net/auth/2.0','openid.mode':'checkid_setup','openid.return_to':returnUrl,'openid.realm':realm,'openid.identity':'http://specs.openid.net/auth/2.0/identifier_select','openid.claimed_id':'http://specs.openid.net/auth/2.0/identifier_select'});
+        location.href=`https://steamcommunity.com/openid/login?${params}`;
+      }catch(error){errorNode.textContent='Não foi possível iniciar o login: '+error.message;button.disabled=false;button.textContent='▣ Continuar com Steam';}
+    });
+  </script>
+</body>
+</html>
