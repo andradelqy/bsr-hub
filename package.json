@@ -1,0 +1,78 @@
+{
+  "name": "bsr-racing-hub",
+  "version": "1.6.16",
+  "description": "App desktop oficial da Brasil Sim Racing",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:web": "node scripts/build-web.cjs",
+    "test:security": "node tests/security-auth.cjs",
+    "test:ratings": "node tests/rating-engine.cjs && node tests/race-processor.cjs && node tests/rating-policy.cjs && node tests/rating-publication-integration.cjs",
+    "test:content": "node tests/content-manager.cjs",
+    "test:actools": "node tests/actools-bridge.cjs",
+    "build:actools": "powershell -NoProfile -ExecutionPolicy Bypass -File native/bsr-actools-bridge/build.ps1",
+    "test:launcher": "electron tests/launcher-smoke.cjs",
+    "test:ratings-ui": "electron tests/ratings-ui.cjs",
+    "test:production": "node tests/production-smoke.cjs",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win --x64"
+  },
+  "author": "BSR Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1",
+    "rcedit": "^4.0.1"
+  },
+  "build": {
+    "appId": "com.bsr.racing",
+    "productName": "BSR Racing Hub",
+    "directories": {
+      "output": "dist"
+    },
+    "afterPack": "scripts/after-pack.cjs",
+    "files": [
+      "index.html",
+      "login.html",
+      "steam_callback.html",
+      "admin.html",
+      "api.js",
+      "config.js",
+      "main.js",
+      "actools-bridge.js",
+      "content-manager.js",
+      "preload.js",
+      "app/**/*",
+      "assets/**/*",
+      "native/bsr-actools-bridge/dist/*.exe",
+      "native/bsr-actools-bridge/dist/*.dll",
+      "native/bsr-actools-bridge/dist/*.config",
+      "native/bsr-actools-bridge/dist/*.md",
+      "native/bsr-actools-bridge/dist/licenses/**/*",
+      "_headers"
+    ],
+    "asarUnpack": [
+      "native/bsr-actools-bridge/dist/*.exe",
+      "native/bsr-actools-bridge/dist/*.dll",
+      "native/bsr-actools-bridge/dist/*.config",
+      "native/bsr-actools-bridge/dist/*.md",
+      "native/bsr-actools-bridge/dist/licenses/**/*"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": "nsis",
+      "icon": "assets/foto/bsr.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "assets/foto/bsr.ico",
+      "uninstallerIcon": "assets/foto/bsr.ico"
+    }
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1"
+  }
+}

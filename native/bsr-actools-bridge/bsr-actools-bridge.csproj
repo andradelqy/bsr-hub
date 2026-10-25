@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <ProjectGuid>{E74EC025-F02F-4E38-985B-3C1D15AB4F0C}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Bsr.AcToolsBridge</RootNamespace>
+    <AssemblyName>bsr-actools-bridge</AssemblyName>
+    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
+    <LangVersion>7.3</LangVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <Optimize>true</Optimize>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="AcManager.Tools">
+      <HintPath>..\..\vendor\actools\AcManager.Tools\bin\x64\Release\AcManager.Tools.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="AcTools">
+      <HintPath>..\..\vendor\actools\AcTools\bin\x64\Release\AcTools.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="AcTools.GenericMods">
+      <HintPath>..\..\vendor\actools\AcTools.GenericMods\bin\x64\Release\AcTools.GenericMods.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="FirstFloor.ModernUI">
+      <HintPath>..\..\vendor\actools\FirstFloor.ModernUI\bin\x64\Release\FirstFloor.ModernUI.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\vendor\actools\Libraries\Newtonsoft.Json\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="SharpCompress">
+      <HintPath>..\..\vendor\actools\Libraries\SharpCompress\SharpCompress.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <None Include="bsr-actools-bridge.exe.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
