@@ -29,6 +29,12 @@ Os testes locais validam o cabeçalho e os fluxos simulados. A conexão real com
 - O instalador 1.6.21 e o ZIP web 1.6.21 foram gerados. A verificação do app.asar e do ZIP confirmou Client Key presente, cabeçalhos X-Parse-Client-Key e ausência dos campos/cabeçalhos REST API Key/Master Key.
 - O latest.yml aponta para o nome e tamanho exatos do novo instalador.
 
+## Correções adicionais no código — 06/11/2026
+- `content-manager.js` deixou de embutir/usar a REST API Key nas chamadas do catálogo. O processo principal carrega `window.CLIENT_KEY` de `config.js` e a entrega ao gerenciador de conteúdo; a chamada usa `X-Parse-Client-Key`.
+- O teste de segurança confirma que o módulo de conteúdo não volta a incluir `REST_API_KEY` nem o cabeçalho `X-Parse-REST-API-Key`.
+- O fallback ZIP passou a rejeitar entradas simbólicas antes de extrair. Isso reduz a exposição ao comportamento inseguro associado ao `extract-zip` 2.0.1, mas a dependência continua sinalizada pelo `npm audit`; trate como mitigação e mantenha a atualização/substituição da biblioteca em aberto.
+
 ## Ainda pendente
-- Publicar o conteúdo de web-dist no Netlify e distribuir o instalador 1.6.21. Isso não foi feito automaticamente.
-- Revogar/regenerar no Back4App a REST API Key exposta, depois de coordenar a atualização dos clientes antigos. Até a rotação no painel, considerar a chave antiga comprometida.
+- Publicar o conteúdo de `web-dist` no Netlify e distribuir um novo instalador 1.6.22 com a migração do gerenciador para Client Key. A publicação do site e a distribuição do instalador não foram feitas nesta tarefa.
+- A antiga REST API Key permanece no histórico Git de uma revisão anterior, quando o repositório estava público. A alteração da visibilidade não apaga o histórico nem revoga a chave. Manter a chave como comprometida e revogá-la/regenerá-la no Back4App depois de coordenar a atualização dos clientes antigos.
+- A dependência `extract-zip@2.0.1` continua sinalizada pelo `npm audit`; o código agora rejeita entradas ZIP simbólicas como mitigação, mas a atualização/substituição da dependência continua recomendada.

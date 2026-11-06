@@ -13,6 +13,7 @@
 - [Gerenciador de conteúdo](development/CONTENT_MANAGER.md)
 
 ## Operação e publicação
+- [Estado e configuração administrativa do GitHub](operations/GITHUB_ADMIN_SETUP.md)
 - [Configuração e publicação Back4App](operations/BACK4APP_SETUP.md)
 - [Controle de acesso](operations/ACCESS_CONTROL.md)
 - [BSR Race Telemetry](operations/BSR_RACE_TELEMETRY.md)

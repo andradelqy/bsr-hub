@@ -51,4 +51,4 @@ Consulte também [Arquitetura](docs/architecture/ARCHITECTURE.md), [Gerenciador 
 
 ## Processo de desenvolvimento da equipe
 
-Leia [CONTRIBUTING.md](CONTRIBUTING.md) antes de enviar alterações, [Processo de desenvolvimento, QC e produção](docs/operations/TEAM_WORKFLOW_QC.md) para as responsabilidades e aprovações, e [Passo a passo da equipe](docs/operations/TEAM_QUICKSTART.md) para os comandos práticos de GitHub.
+Leia [CONTRIBUTING.md](CONTRIBUTING.md) antes de enviar alterações, [Processo de desenvolvimento, QC e produção](docs/operations/TEAM_WORKFLOW_QC.md) para as responsabilidades e aprovações, [Passo a passo da equipe](docs/operations/TEAM_QUICKSTART.md) para os comandos práticos de GitHub e [Estado/configuração administrativa do GitHub](docs/operations/GITHUB_ADMIN_SETUP.md) para permissões e proteções.

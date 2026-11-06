@@ -302,9 +302,10 @@ app.whenReady().then(async () => {
   });
 
   acToolsBridge = registerAcToolsBridge({ app });
+  const clientKey = loadBack4AppClientKey();
   telemetryUploader = new BsrTelemetryUploader({
     appId:APP_ID,
-    clientKey:loadBack4AppClientKey(),
+    clientKey,
     documentsDir:app.getPath('documents'),
     userData:app.getPath('userData'),
     onStatus:status => {
@@ -374,7 +375,8 @@ app.whenReady().then(async () => {
     app, dialog, net, BrowserWindow, ipcMain,
     getMainWindow:() => mainWindow,
     actools:acToolsBridge,
-    telemetryConsent:true
+    telemetryConsent:true,
+    clientKey
   });
   try {
     await contentManager.initialize();

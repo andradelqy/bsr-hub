@@ -9,7 +9,6 @@ const { spawn } = require('child_process');
 const extractZip = require('extract-zip');
 
 const APP_ID = '1CJSJppMYYgI6hEPLag7diConyKxOirJ3UPFB7QP';
-const REST_API_KEY = '[REDACTED_BACK4APP_SECRET]';
 const API_URL = 'https://parseapi.back4app.com';
 const MAX_PACKAGE_BYTES = 25 * 1024 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 60 * 1024 * 1024 * 1024;
@@ -230,6 +229,16 @@ function validateArchiveEntry(entryName) {
   return normalized;
 }
 
+function isSymbolicLinkEntry(entry) {
+  const mode = (Number(entry?.externalFileAttributes || 0) >>> 16) & 0xffff;
+  return (mode & 0xf000) === 0xa000;
+}
+
+function validateZipEntry(entry) {
+  if (isSymbolicLinkEntry(entry)) throw new Error('Links simbólicos não são permitidos em pacotes ZIP.');
+  return validateArchiveEntry(entry?.fileName);
+}
+
 function sanitizePackageMetadata(raw) {
   const type = cleanId(raw?.type || '', 'Tipo').toLowerCase();
   if (!ALLOWED_TYPES.has(type)) throw new Error('Tipo de conteúdo não permitido.');
@@ -375,11 +384,12 @@ async function removeEmptyParents(start, stop) {
 }
 
 class BSRContentManager {
-  constructor({ app, dialog, net, BrowserWindow, actools = null, telemetryConsent = false }) {
+  constructor({ app, dialog, net, BrowserWindow, actools = null, telemetryConsent = false, clientKey = '' }) {
     this.app = app;
     this.dialog = dialog;
     this.net = net;
     this.BrowserWindow = BrowserWindow;
+    this.clientKey = String(clientKey || '').trim();
     this.actools = actools;
     this.telemetryConsent = Boolean(telemetryConsent);
     this.statePath = path.join(app.getPath('userData'), 'content-manager.json');
@@ -609,7 +619,7 @@ class BSRContentManager {
       } else {
         if (archiveFormat !== 'zip') throw new Error('A análise de RAR e 7z exige o motor AcTools incluído no launcher.');
         await extractZip(archivePath, { dir:staging, onEntry:entry => {
-          const entryName = validateArchiveEntry(entry.fileName);
+          const entryName = validateZipEntry(entry);
           entries.push(entryName);
           const entryBytes = Number(entry.uncompressedSize || 0);
           if (!Number.isSafeInteger(entryBytes) || entryBytes < 0) throw new Error('O pacote contém um tamanho de arquivo inválido.');
@@ -647,7 +657,10 @@ class BSRContentManager {
 
   async fetchCatalog(sessionToken = '') {
     const token = cleanSessionToken(sessionToken);
-    const headers = { '[REDACTED_BACK4APP_SECRET]':APP_ID, 'X-Parse-REST-API-Key':REST_API_KEY, 'Content-Type':'application/json' };
+    if (!this.clientKey || /^(YOUR_|PREENCHER|CHANGE_ME)/i.test(this.clientKey)) {
+      throw new Error('A Client Key do Back4App não foi configurada no launcher.');
+    }
+    const headers = { '[REDACTED_BACK4APP_SECRET]':APP_ID, 'X-Parse-Client-Key':this.clientKey, 'Content-Type':'application/json' };
     if (token) headers['X-Parse-Session-Token'] = token;
     const response = await this.net.fetch(`${API_URL}/functions/getContentCatalog`, {
       method:'POST', headers, body:'{}'
@@ -984,7 +997,7 @@ class BSRContentManager {
       } else {
         if (archiveFormat !== 'zip') throw new Error('Pacotes RAR e 7z exigem o motor AcTools incluído no launcher. Reinstale a versão atual do BSR Hub.');
         await extractZip(download.path, { dir:staging, onEntry:entry => {
-          validateArchiveEntry(entry.fileName);
+          validateZipEntry(entry);
           const entryBytes = Number(entry.uncompressedSize || 0);
           if (!Number.isSafeInteger(entryBytes) || entryBytes < 0) throw new Error('O pacote contém um tamanho de arquivo inválido.');
           expandedBytes += entryBytes;
@@ -1331,8 +1344,8 @@ class BSRContentManager {
   }
 }
 
-function registerContentManager({ app, dialog, net, BrowserWindow, ipcMain, getMainWindow, actools = null, telemetryConsent = false }) {
-  const manager = new BSRContentManager({ app, dialog, net, BrowserWindow, actools, telemetryConsent });
+function registerContentManager({ app, dialog, net, BrowserWindow, ipcMain, getMainWindow, actools = null, telemetryConsent = false, clientKey = '' }) {
+  const manager = new BSRContentManager({ app, dialog, net, BrowserWindow, actools, telemetryConsent, clientKey });
   const trusted = event => {
     const window = getMainWindow();
     if (!window || event.sender !== window.webContents) throw new Error('Origem não autorizada.');
@@ -1369,4 +1382,4 @@ function registerContentManager({ app, dialog, net, BrowserWindow, ipcMain, getM
   return manager;
 }
 
-module.exports = { APP_ID, REST_API_KEY, API_URL, BSRContentManager, registerContentManager, sanitizePackageMetadata, validateArchiveEntry, detectArchiveLayout, detectArchiveFormat, isOptionalArchiveMetadata, isInside, parseSteamLibraries, setIniValue, updateIniSections, cleanSessionToken, normalizeServerTrack, resolveServerTrack, normalizeOnlineServerInformation, googleDriveFileId, canonicalGoogleDriveUrl, googleDriveConfirmationUrl };
+module.exports = { APP_ID, API_URL, BSRContentManager, registerContentManager, sanitizePackageMetadata, validateArchiveEntry, validateZipEntry, isSymbolicLinkEntry, detectArchiveLayout, detectArchiveFormat, isOptionalArchiveMetadata, isInside, parseSteamLibraries, setIniValue, updateIniSections, cleanSessionToken, normalizeServerTrack, resolveServerTrack, normalizeOnlineServerInformation, googleDriveFileId, canonicalGoogleDriveUrl, googleDriveConfirmationUrl };

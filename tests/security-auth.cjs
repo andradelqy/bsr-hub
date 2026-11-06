@@ -100,9 +100,15 @@ vm.runInContext(source, context, { filename: 'api.js' });
   assert.match(callback, /received!==expected/, 'browser callback must verify its state');
 
   const apiClient = fs.readFileSync(path.join(root, 'api.js'), 'utf8');
-  const configSource = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
+  const configPath = path.join(root, 'config.js');
+  // config.js is intentionally ignored by Git. CI uses only the safe example;
+  // local development still validates the machine-specific config when present.
+  const configSource = fs.existsSync(configPath)
+    ? fs.readFileSync(configPath, 'utf8')
+    : fs.readFileSync(path.join(root, 'config.example.js'), 'utf8');
   const configExample = fs.readFileSync(path.join(root, 'config.example.js'), 'utf8');
   const uploaderSource = fs.readFileSync(path.join(root, 'telemetry', 'uploader.js'), 'utf8');
+  const contentManagerSource = fs.readFileSync(path.join(root, 'content-manager.js'), 'utf8');
   const mainSource = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
   assert.match(apiClient, /X-Parse-Client-Key/);
   assert.doesNotMatch(apiClient, /REST_API_KEY|X-Parse-REST-API-Key/);
@@ -110,7 +116,10 @@ vm.runInContext(source, context, { filename: 'api.js' });
   assert.doesNotMatch(configExample, /REST_API_KEY|X-Parse-REST-API-Key/);
   assert.match(uploaderSource, /X-Parse-Client-Key/);
   assert.doesNotMatch(uploaderSource, /X-Parse-JavaScript-Key|X-Parse-REST-API-Key/);
+  assert.match(contentManagerSource, /X-Parse-Client-Key/);
+  assert.doesNotMatch(contentManagerSource, /REST_API_KEY|X-Parse-REST-API-Key/);
   assert.match(mainSource, /loadBack4AppClientKey/);
+  assert.match(mainSource, /registerContentManager\([\s\S]*?clientKey/);
   assert.match(configSource, /window\.CLIENT_KEY\s*=/);
   assert.doesNotMatch(configSource, /window\.REST_API_KEY\s*=/);
   const components = fs.readFileSync(path.join(root, 'app', 'components.js'), 'utf8');

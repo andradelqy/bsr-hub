@@ -7,6 +7,8 @@ const {
   BSRContentManager,
   sanitizePackageMetadata,
   validateArchiveEntry,
+  validateZipEntry,
+  isSymbolicLinkEntry,
   detectArchiveLayout,
   isOptionalArchiveMetadata,
   isInside,
@@ -63,6 +65,11 @@ assert.throws(() => sanitizePackageMetadata({ ...valid, type:'root' }), /não pe
 assert.equal(validateArchiveEntry('content/cars/bsr/file.kn5'), 'content/cars/bsr/file.kn5');
 assert.throws(() => validateArchiveEntry('../outside.exe'), /fora/);
 assert.throws(() => validateArchiveEntry('C:\\Windows\\file.dll'), /absoluto/);
+assert.equal(isSymbolicLinkEntry({ externalFileAttributes:(0xa1ff << 16) >>> 0 }), true);
+assert.equal(isSymbolicLinkEntry({ externalFileAttributes:(0x81a4 << 16) >>> 0 }), false);
+assert.equal(isSymbolicLinkEntry({ externalFileAttributes:0 }), false);
+assert.throws(() => validateZipEntry({ fileName:'payload-link', externalFileAttributes:(0xa1ff << 16) >>> 0 }), /Links simbólicos/);
+assert.equal(validateZipEntry({ fileName:'content/cars/car/data.acd', externalFileAttributes:(0x81a4 << 16) >>> 0 }), 'content/cars/car/data.acd');
 assert.equal(isInside('C:\\Games\\AC', 'C:\\Games\\AC\\content\\cars'), true);
 assert.equal(isInside('C:\\Games\\AC', 'C:\\Games\\Other'), false);
 assert.equal(isOptionalArchiveMetadata('content/tracks/test/ui/Thumbs.db'), true);
@@ -163,9 +170,11 @@ assert.doesNotMatch(preload, /writeFile|readFile|exec|spawn/, 'renderer must not
       catalogRequest = options;
       return { ok:true, json:async () => ({ result:[valid] }) };
     } };
-    const catalogManager = new BSRContentManager({ app:{ getPath:() => path.join(root, 'catalog-state') }, dialog:{}, net:catalogNet, BrowserWindow:{} });
+    const catalogManager = new BSRContentManager({ app:{ getPath:() => path.join(root, 'catalog-state') }, dialog:{}, net:catalogNet, BrowserWindow:{}, clientKey:'test-client-key' });
     await catalogManager.canonicalPackage({ objectId:valid.objectId }, 'r:valid-session-token-12345');
     assert.equal(catalogRequest.headers['X-Parse-Session-Token'], 'r:valid-session-token-12345', 'catalog validation must forward the authenticated Parse session');
+    assert.equal(catalogRequest.headers['X-Parse-Client-Key'], 'test-client-key', 'catalog calls must use the configured Client Key');
+    assert.equal('X-Parse-REST-API-Key' in catalogRequest.headers, false, 'catalog calls must not use the retired REST API Key');
 
     const userData = path.join(root, 'user-data');
     const documents = path.join(root, 'documents');
