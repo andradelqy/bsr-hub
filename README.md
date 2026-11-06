@@ -1,11 +1,13 @@
 # BSR Racing Hub
 
-Código-fonte privado do launcher da Brasil Sim Racing. O projeto reúne o launcher Electron, páginas web, Cloud Code do Back4App, motor de ratings e a ponte nativa baseada em AcTools.
+Repositório de desenvolvimento do BSR Racing Hub, plataforma da Brasil Sim Racing. O projeto reúne o launcher Electron, a interface web, o Cloud Code do Back4App, o motor de ratings, o processador de resultados, a telemetria e a ponte nativa baseada em AcTools.
+
+Para uma visão completa da arquitetura, dos módulos, do processo de contribuição e da publicação, consulte o [Manual Técnico e Operacional](docs/BSR_HUB_MANUAL_TECNICO_E_OPERACIONAL.pdf).
 
 ## Preparação local
 
 ```powershell
-git clone --recurse-submodules <URL_DO_REPOSITORIO>
+git clone --recurse-submodules https://github.com/andradelqy/bsr-hub.git
 cd bsr-hub
 Copy-Item config.example.js config.js
 npm ci
@@ -13,7 +15,7 @@ npm run build:actools
 npm start
 ```
 
-Preencha `config.js` com as credenciais do Back4App. Esse arquivo não deve ser versionado.
+Preencha `config.js` localmente com os identificadores e as chaves de cliente do ambiente de desenvolvimento, conforme `config.example.js`. Esse arquivo é ignorado pelo Git e nunca deve ser enviado. Não coloque nele Master Key, senhas administrativas, Steam Web API Key ou segredos de servidor.
 
 ## Comandos principais
 

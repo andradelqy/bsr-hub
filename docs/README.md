@@ -1,6 +1,7 @@
 # Documentação do BSR Hub
 
 ## Comece por aqui
+- [Manual Técnico e Operacional (PDF)](BSR_HUB_MANUAL_TECNICO_E_OPERACIONAL.pdf)
 - [Passo a passo para desenvolvedores e QC](operations/TEAM_QUICKSTART.md)
 - [Processo de desenvolvimento, QC e produção](operations/TEAM_WORKFLOW_QC.md)
 - [Guia do código e das funcionalidades](architecture/CODEBASE_GUIDE.md)
