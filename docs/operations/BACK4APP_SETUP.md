@@ -1,21 +1,25 @@
 # Publicação segura do BSR Hub
 
-O frontend continua usando o aplicativo Back4App configurado em `config.js`. As chaves de cliente identificam o app, mas **não são segredo nem substituem permissões**. A proteção efetiva está no Cloud Code, nas sessões Parse, nas roles e nas CLPs.
+O frontend e o launcher usam o aplicativo Back4App configurado em `config.js`. O App ID e as chaves de cliente identificam a aplicação, mas **não são segredos nem substituem permissões**. Chamadas REST diretas usam `CLIENT_KEY` (`X-Parse-Client-Key`); `JAVASCRIPT_KEY` fica reservada ao Parse JavaScript SDK. Nunca distribua `REST_API_KEY` nem `MASTER_KEY`. A proteção efetiva está no Cloud Code, nas sessões Parse, nas roles e nas CLPs.
 
-## 1. Publique o Cloud Code primeiro
+## 1. Configure as chaves do cliente
 
-Execute `node scripts/stage-cloud-upload.cjs`. No painel Back4App, envie os seis arquivos JavaScript de `cloud-upload-v14` juntos: `main.js`, `bsr-secure-v14.js`, `rating-engine.js`, `rating-policy.js`, `rating-publication.js` e `rating-calibration.js`. Após o deploy, execute uma vez o Cloud Job `initializeRatingPublication`, sem execuções simultâneas. Use o Hub 1.6.16 nas publicações administrativas. Consulte [RATINGS_3_1_RELEASE.md](RATINGS_3_1_RELEASE.md) para regras, recuperação, compatibilidade e limitações.
+Em **App Settings > Security & Keys**, obtenha o App ID e a JavaScript Key e gere/ative uma **Client Key**. Preencha `APP_ID`, `CLIENT_KEY`, `JAVASCRIPT_KEY` e `BASE_URL` em `config.js`. As chamadas REST do launcher e do uploader usam `X-Parse-Client-Key`; a JavaScript Key não é usada como cabeçalho REST. Nunca coloque a REST API Key nem a Master Key em arquivos distribuídos. Não envie valores de chave pelo chat.
+
+## 2. Publique o Cloud Code primeiro
+
+Execute `node scripts/stage-cloud-upload.cjs`. No painel Back4App, envie os seis arquivos JavaScript de `deploy/cloud-code/current` juntos: `main.js`, `bsr-secure-v14.js`, `rating-engine.js`, `rating-policy.js`, `rating-publication.js` e `rating-calibration.js`. Após o deploy, execute uma vez o Cloud Job `initializeRatingPublication`, sem execuções simultâneas. Use a versão compatível mais recente do Hub (atualmente 1.6.21) nas publicações administrativas. Consulte [RATINGS_3_1_RELEASE.md](RATINGS_3_1_RELEASE.md) para regras, recuperação, compatibilidade e limitações.
 
 Esse código é compatível com Parse Server 7/Node 18: usa `fetch` para validar a resposta OpenID diretamente na Steam e não depende mais de `Parse.Cloud.httpRequest`.
 
 Em **Server Settings > Config Vars** ou Parse Config, defina:
 
 - `STEAM_API_KEY`: Web API Key da Steam, usada somente pelo servidor para obter nome e avatar;
-- `STEAM_ALLOWED_CALLBACKS` (opcional): lista separada por vírgulas de callbacks HTTPS autorizados. O padrão é `https://bsrracing2.netlify.app/steam_callback.html`.
+- `STEAM_ALLOWED_CALLBACKS` (opcional): lista separada por vírgulas de callbacks HTTPS adicionais autorizados, com protocolo, host e caminho exatos. O callback oficial atual `https://brasilsimracing.com/steam_callback.html` permanece permitido mesmo quando esta variável estiver definida. O domínio anterior `https://bsrracing2.netlify.app/steam_callback.html` é aceito temporariamente durante a migração. O desktop continua restrito a loopback.
 
 O callback desktop usa temporariamente `http://127.0.0.1:<porta>/steam/callback`. Somente loopback é aceito.
 
-## 2. Configure o administrador
+## 3. Configure o administrador
 
 1. Em **Database > User**, crie ou use um `_User` real.
 2. Em **Database > Role**, crie uma role com o nome exato `admin`.
@@ -25,7 +29,7 @@ O callback desktop usa temporariamente `http://127.0.0.1:<porta>/steam/callback`
 6. Para uma experiência de conta única, localize o `_User` criado pelo login Steam (nome de usuário `steam:<SteamID64>`) e adicione esse mesmo usuário à relação `users` da role `admin`. Nesse caso a central administrativa abre automaticamente após o login Steam, sem pedir uma segunda credencial.
 7. Nas configurações do Parse Server, mantenha sessões revogáveis habilitadas e configure duração compatível com 30 dias (`sessionLength: 2592000`).
 
-## 3. Aplique as CLPs após publicar o Cloud Code
+## 4. Aplique as CLPs após publicar o Cloud Code
 
 Teste primeiro as funções abaixo no console do Back4App. Em seguida remova leitura/escrita pública direta das classes sensíveis.
 
@@ -37,7 +41,7 @@ Teste primeiro as funções abaixo no console do Back4App. Em seguida remova lei
 | `RaceResult`, `ChampionshipStandings` | somente role `admin`/Cloud Code | somente role `admin`/Cloud Code |
 | `RatingLedger` | somente role `admin`/Cloud Code | somente Cloud Code; registros imutáveis |
 | `Notifications` | somente role `admin`/Cloud Code | somente role `admin`/Cloud Code |
-| `Reports`, `AuditLog`, `AuthChallenge`, `RaceImports`, `ContentPackage`, `RaceConnection`, `ServerProfile`, `HubAccessPolicy`, `HubAccessGrant` | somente role `admin`/Cloud Code | somente role `admin`/Cloud Code |
+| `Reports`, `AuditLog`, `AuthChallenge`, `RaceImports`, `ContentPackage`, `RaceConnection`, `ServerProfile`, `HubAccessPolicy`, `HubAccessGrant`, `TelemetryEvidence` | somente role `admin`/Cloud Code | somente role `admin`/Cloud Code |
 | `_User`, `_Role`, `_Session` | sem consulta pública | sem criação/alteração pública |
 
 O próprio `cloud/main.js` também possui gatilhos que bloqueiam consultas e mutações diretas. O launcher lê apenas DTOs sanitizados por Cloud Functions; SteamID, ponteiros de usuário, denúncias e logs não ficam mais publicamente enumeráveis.
@@ -61,7 +65,9 @@ Funções autenticadas:
 - `getMyDriverResults`
 - `reserveRaceCar`
 - `cancelRaceReservation`
-- `submitRaceReport`
+- `registerRaceTelemetryEvidence`
+- `getMyTelemetryEvidenceSessions`
+- `submitRaceReport` (aceita opcionalmente `evidenceSessionId` para anexar o replay ao protesto)
 
 Funções exclusivas da role `admin` para o processador integrado de resultados:
 
@@ -84,13 +90,13 @@ Funções exclusivas da role `admin` para conteúdo e servidor:
 
 O cliente apenas interpreta os arquivos e permite a revisão. BSR Rating, Safety Rating, confiabilidade, licenças, pontos, resultados, reservas e auditoria são recalculados e gravados pelo Cloud Code com Master Key. A chave determinística `raceId:sessionType` impede a publicação duplicada da mesma sessão. Cada alteração também recebe a versão do algoritmo e um registro imutável em `RatingLedger`.
 
-## 4. Publique o frontend coordenadamente
+## 5. Publique o frontend coordenadamente
 
 Execute `npm run build:web` e publique apenas o conteúdo de `web-dist`. O arquivo `netlify.toml` já configura esse diretório e o `_headers` adiciona CSP e outros cabeçalhos de proteção.
 
 O deploy precisa incluir `login.html` e `steam_callback.html`; ambos estavam ausentes na versão online anterior. Publique Cloud Code e frontend na mesma janela de manutenção para não deixar o login em estado intermediário.
 
-## 5. Validação pós-deploy
+## 6. Validação pós-deploy
 
 1. Abra `https://bsrracing2.netlify.app/login.html` e confirme o login Steam.
 2. Feche e reabra o navegador/app: a sessão deve continuar válida até o logout, a expiração ou a revogação no Back4App.

@@ -16,10 +16,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   startSteamLogin: state => ipcRenderer.invoke('start-steam-login', state),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  telemetry: Object.freeze({
+    setSession: token => ipcRenderer.invoke('telemetry:set-session', token),
+    downloadReportReplay: (chunks, originalName) => ipcRenderer.invoke('telemetry:download-report-replay', chunks, originalName),
+    onStatus: callback => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on('telemetry:status', listener);
+      return () => ipcRenderer.removeListener('telemetry:status', listener);
+    }
+  }),
   content: Object.freeze({
     initialize: () => ipcRenderer.invoke('content:initialize'),
     status: packages => ipcRenderer.invoke('content:status', packages),
     chooseGame: () => ipcRenderer.invoke('content:choose-game'),
+    carMetadata: () => ipcRenderer.invoke('content:car-metadata'),
     inspectPackage: () => ipcRenderer.invoke('content:inspect-package'),
     download: (pkg, sessionToken) => ipcRenderer.invoke('content:download', { objectId:pkg?.objectId }, sessionToken),
     cancelDownload: slug => ipcRenderer.invoke('content:cancel-download', slug),

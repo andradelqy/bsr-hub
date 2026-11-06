@@ -4,7 +4,7 @@
   'use strict';
 
   const APP_ID = window.APP_ID;
-  const REST_API_KEY = window.REST_API_KEY;
+  const CLIENT_KEY = window.CLIENT_KEY;
   const BASE_URL = window.BASE_URL;
   const SESSION_KEY = 'bsr_parse_session';
   const ADMIN_RETURN_KEY = 'bsr_pre_admin_session';
@@ -59,8 +59,8 @@
     return restoreSession(previous);
   }
 
-  if (!APP_ID || !REST_API_KEY || !BASE_URL) {
-    console.error('[BSR API] Configuração do Back4App ausente.');
+  if (!APP_ID || !CLIENT_KEY || !BASE_URL) {
+    console.error('[BSR API] Configure APP_ID, CLIENT_KEY e BASE_URL em config.js.');
     return;
   }
 
@@ -71,7 +71,7 @@
   function buildHeaders(extraHeaders) {
     const headers = {
       '[REDACTED_BACK4APP_SECRET]': APP_ID,
-      'X-Parse-REST-API-Key': REST_API_KEY,
+      'X-Parse-Client-Key': CLIENT_KEY,
       'Content-Type': 'application/json',
       ...extraHeaders
     };
@@ -307,8 +307,17 @@
       return this.cloud('cancelRaceReservation', { reservationId });
     },
 
-    async submitRaceReport(raceId, againstSteamId, description, videoUrl = '') {
-      return this.cloud('submitRaceReport', { raceId, againstSteamId, description, videoUrl });
+    async getMyTelemetryEvidenceSessions() {
+      return this.cloud('getMyTelemetryEvidenceSessions', {});
+    },
+
+    async submitRaceReport(raceId, reportedPilotName, description, videoUrl = '', evidenceSessionId = '', reportedSteamId = '') {
+      return this.cloud('submitRaceReport', {
+        raceId, reportedPilotName, reportedSteamId,
+        // Mantém compatibilidade com páginas/launchers antigos durante a atualização.
+        againstSteamId:reportedSteamId || reportedPilotName,
+        description, videoUrl, evidenceSessionId
+      });
     },
 
     async getRace(raceId) {
@@ -345,7 +354,7 @@
     },
 
     async getAdminReports(limit = 100) {
-      const data = await request(`/classes/Reports?order=-submittedAt,-createdAt&limit=${Math.min(Math.max(Number(limit) || 100, 1), 300)}`);
+      const data = await request(`/classes/Reports?include=fromDriver,againstDriver&order=-submittedAt,-createdAt&limit=${Math.min(Math.max(Number(limit) || 100, 1), 300)}`);
       return data.results || [];
     },
 

@@ -264,6 +264,29 @@ function parseSteamLibraries(vdf) {
   return paths;
 }
 
+function setIniValue(source, sectionName, keyName, value) {
+  const original = String(source || '');
+  const newline = original.includes('\r\n') ? '\r\n' : '\n';
+  const lines = original.replace(/\r\n/g, '\n').split('\n');
+  const sectionPattern = new RegExp('^\\s*\\[' + String(sectionName).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '\\]\\s*$', 'i');
+  const keyPattern = new RegExp('^(\\s*' + String(keyName).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '\\s*=\\s*).*$','i');
+  let sectionStart = lines.findIndex(line => sectionPattern.test(line));
+  if (sectionStart < 0) {
+    if (lines.some(line => line.trim())) lines.push('');
+    lines.push('[' + sectionName + ']', String(keyName) + '=' + String(value));
+    return lines.join(newline);
+  }
+  let sectionEnd = lines.findIndex((line, index) => index > sectionStart && /^\s*\[[^\]]+\]\s*$/.test(line));
+  if (sectionEnd < 0) sectionEnd = lines.length;
+  let keyIndex = -1;
+  for (let index = sectionStart + 1; index < sectionEnd; index += 1) {
+    if (keyPattern.test(lines[index])) { keyIndex = index; break; }
+  }
+  if (keyIndex >= 0) lines[keyIndex] = lines[keyIndex].replace(keyPattern, '$1' + String(value));
+  else lines.splice(sectionEnd, 0, String(keyName) + '=' + String(value));
+  return lines.join(newline);
+}
+
 function updateIniSections(source, sections) {
   let output = String(source || '').replace(/\r\n/g, '\n');
   for (const [section, values] of Object.entries(sections)) {
@@ -352,12 +375,13 @@ async function removeEmptyParents(start, stop) {
 }
 
 class BSRContentManager {
-  constructor({ app, dialog, net, BrowserWindow, actools = null }) {
+  constructor({ app, dialog, net, BrowserWindow, actools = null, telemetryConsent = false }) {
     this.app = app;
     this.dialog = dialog;
     this.net = net;
     this.BrowserWindow = BrowserWindow;
     this.actools = actools;
+    this.telemetryConsent = Boolean(telemetryConsent);
     this.statePath = path.join(app.getPath('userData'), 'content-manager.json');
     this.downloadRoot = path.join(app.getPath('userData'), 'content-packages');
     this.backupRoot = path.join(app.getPath('userData'), 'content-backups');
@@ -374,8 +398,110 @@ class BSRContentManager {
       this.state = { ...this.state, ...parsed, version:2, installs:parsed.installs || {}, downloads:parsed.downloads || {}, history:parsed.history || [] };
     } catch (_) {}
     if (!(await this.isGameDirectory(this.state.gamePath))) this.state.gamePath = await this.detectGamePath();
+    if (this.telemetryConsent && await this.isGameDirectory(this.state.gamePath)) await this.ensureTelemetryReady();
     await this.saveState();
     return this.summary();
+  }
+
+  async writeIniSettings(filePath, sections) {
+    const original = await fsp.readFile(filePath, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return '';
+      throw error;
+    });
+    let updated = original;
+    for (const [section, values] of Object.entries(sections || {})) {
+      for (const [key, value] of Object.entries(values || {})) updated = setIniValue(updated, section, key, value);
+    }
+    if (updated === original) return { changed:false, backupPath:null };
+    const backupPath = filePath + '.bsr-backup';
+    if (original && !(await exists(backupPath))) await fsp.copyFile(filePath, backupPath);
+    await fsp.mkdir(path.dirname(filePath), { recursive:true });
+    const temporary = filePath + '.bsr-tmp';
+    await fsp.writeFile(temporary, updated, 'utf8');
+    await fsp.copyFile(temporary, filePath);
+    await fsp.unlink(temporary).catch(() => {});
+    return { changed:true, backupPath:original ? backupPath : null };
+  }
+
+  async writeTelemetryAppElevated(sourcePath, destinationPath) {
+    const temporaryRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'bsr-telemetry-setup-'));
+    const stagedSource = path.join(temporaryRoot, 'bsr_race_telemetry.py');
+    const scriptPath = path.join(temporaryRoot, 'install-telemetry.ps1');
+    try {
+      await fsp.copyFile(sourcePath, stagedSource);
+      const quote = value => "'" + String(value).replace(/'/g, "''") + "'";
+      const script = [
+        "$ErrorActionPreference = 'Stop'",
+        "$destination = " + quote(destinationPath),
+        "$source = " + quote(stagedSource),
+        "New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null",
+        "Copy-Item -LiteralPath $source -Destination $destination -Force",
+        "exit 0"
+      ].join("\r\n");
+      await fsp.writeFile(scriptPath, script, 'utf8');
+      const command = [
+        "$scriptPath = " + quote(scriptPath),
+        "$powershell = Join-Path $env:WINDIR 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'",
+        "$arguments = '-NoProfile -ExecutionPolicy Bypass -File ' + [char]34 + $scriptPath + [char]34",
+        "$process = Start-Process -FilePath $powershell -ArgumentList $arguments -Verb RunAs -Wait -PassThru",
+        "exit $process.ExitCode"
+      ].join('; ');
+      await new Promise((resolve, reject) => {
+        const child = spawn('powershell.exe', ['-NoProfile','-ExecutionPolicy','Bypass','-Command',command], { windowsHide:false, stdio:['ignore','pipe','pipe'] });
+        let output = '';
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stdout.on('data', value => { output += value; });
+        child.stderr.on('data', value => { output += value; });
+        child.once('error', reject);
+        child.once('exit', code => code === 0 ? resolve() : reject(Object.assign(new Error(output.trim() || 'A autorização do Windows foi recusada ou a instalação do componente foi bloqueada.'), { code:'BSR_ELEVATION_DENIED', exitCode:code })));
+      });
+    } finally {
+      await fsp.rm(temporaryRoot, { recursive:true, force:true }).catch(() => {});
+    }
+  }
+
+  async ensureBsrTelemetryApp() {
+    const sourcePath = path.join(__dirname, 'telemetry', 'ac_app', 'BSR_RACE_TELEMETRY', 'BSR_RACE_TELEMETRY.py');
+    const source = await fsp.readFile(sourcePath);
+    const appDirectory = path.join(this.state.gamePath, 'apps', 'python', 'BSR_RACE_TELEMETRY');
+    const destinationPath = path.join(appDirectory, 'BSR_RACE_TELEMETRY.py');
+    const existing = await fsp.readFile(destinationPath).catch(() => null);
+    let installed = false;
+    if (!existing || !existing.equals(source)) {
+      try {
+        await fsp.mkdir(appDirectory, { recursive:true });
+        await fsp.writeFile(destinationPath, source);
+      } catch (error) {
+        if (!['EACCES','EPERM','ENOENT'].includes(error.code) || process.platform !== 'win32') throw error;
+        await this.writeTelemetryAppElevated(sourcePath, destinationPath);
+      }
+      installed = true;
+    }
+
+    const configDirectory = path.join(this.app.getPath('documents'), 'Assetto Corsa', 'cfg');
+    const [pythonConfig, gameplayConfig] = await Promise.all([
+      this.writeIniSettings(path.join(configDirectory, 'python.ini'), { BSR_RACE_TELEMETRY:{ ACTIVE:1 } }),
+      this.writeIniSettings(path.join(configDirectory, 'gameplay.ini'), { PYTHON:{ ENABLE_PYTHON:1 } })
+    ]);
+    return { installed, appDirectory, pythonEnabled:true, pythonConfig, gameplayConfig };
+  }
+
+  async ensureReplayAutosave() {
+    const replayIni = path.join(this.app.getPath('documents'), 'Assetto Corsa', 'cfg', 'replay.ini');
+    const result = await this.writeIniSettings(replayIni, { REPLAY:{ MAX_SIZE_MB:2000 }, AUTOSAVE:{ ENABLED:1, RACE:4 } });
+    return { enabled:true, changed:result.changed, backupPath:result.backupPath };
+  }
+
+  async ensureTelemetryReady() {
+    try {
+      this.telemetrySetup = await this.ensureBsrTelemetryApp();
+      this.replayAutosave = await this.ensureReplayAutosave();
+      return { telemetry:this.telemetrySetup, replay:this.replayAutosave };
+    } catch (error) {
+      if (error.code !== 'BSR_ELEVATION_DENIED') error.code = 'BSR_TELEMETRY_SETUP_FAILED';
+      throw error;
+    }
   }
 
   async saveState() {
@@ -413,11 +539,50 @@ class BSRContentManager {
     return '';
   }
 
+  async getInstalledCarMetadata() {
+    if (!(await this.isGameDirectory(this.state.gamePath))) {
+      return { available:false, gamePath:'', count:0, cars:[] };
+    }
+    const carsRoot = path.join(this.state.gamePath, 'content', 'cars');
+    const entries = await fsp.readdir(carsRoot, { withFileTypes:true });
+    const directories = entries.filter(item => item.isDirectory() && /^[a-z0-9][a-z0-9_.-]{0,119}$/i.test(item.name));
+    const cars = [];
+    for (const entry of directories.slice(0, 3000)) {
+      const metadataPath = path.join(carsRoot, entry.name, 'ui', 'ui_car.json');
+      try {
+        const raw = await fsp.readFile(metadataPath, 'utf8');
+        const data = JSON.parse(raw.replace(/^\uFEFF/, ''));
+        const tags = Array.isArray(data.tags)
+          ? data.tags.map(value => cleanText(value, 60)).filter(Boolean).slice(0, 40)
+          : [];
+        cars.push({
+          id:entry.name,
+          name:cleanText(data.name || data.carName || entry.name, 120),
+          brand:cleanText(data.brand, 80),
+          carClass:cleanText(data.class || data.carClass || data.category, 80),
+          tags,
+          description:cleanText(data.description, 300),
+          metadataAvailable:true
+        });
+      } catch (_) {
+        cars.push({ id:entry.name, name:friendlyName(entry.name), brand:'', carClass:'', tags:[], description:'', metadataAvailable:false });
+      }
+    }
+    return {
+      available:true,
+      gamePath:this.state.gamePath,
+      count:cars.length,
+      metadataCount:cars.filter(item => item.metadataAvailable).length,
+      cars
+    };
+  }
+
   async chooseGamePath(window) {
     const result = await this.dialog.showOpenDialog(window, { title:'Selecione a pasta do Assetto Corsa', properties:['openDirectory'], buttonLabel:'Usar esta pasta' });
     if (result.canceled || !result.filePaths[0]) return this.summary();
     if (!(await this.isGameDirectory(result.filePaths[0]))) throw new Error('A pasta selecionada não contém uma instalação válida do Assetto Corsa.');
     this.state.gamePath = path.resolve(result.filePaths[0]);
+    if (this.telemetryConsent) await this.ensureTelemetryReady();
     await this.saveState();
     return this.summary();
   }
@@ -1107,7 +1272,9 @@ class BSRContentManager {
   }
 
   async joinServer(raw) {
+    if (!this.telemetryConsent) throw new Error('O consentimento obrigatório do BSR Race Telemetry ainda não foi concedido.');
     if (!(await this.isGameDirectory(this.state.gamePath))) throw new Error('Localize a instalação do Assetto Corsa antes de entrar no servidor.');
+    await this.ensureTelemetryReady();
     const host = String(raw?.host || '').trim().toLowerCase();
     if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$|^(?:\d{1,3}\.){3}\d{1,3}$/.test(host)) throw new Error('Endereço do servidor inválido.');
     const serverPort = Number(raw.serverPort); const httpPort = Number(raw.httpPort);
@@ -1139,6 +1306,17 @@ class BSRContentManager {
     const original = await fsp.readFile(raceIni, 'utf8').catch(() => '');
     const backup = `${raceIni}.bsr-backup`;
     if (original && !(await exists(backup))) await fsp.writeFile(backup, original, 'utf8');
+    const telemetrySession = {
+      sessionId:crypto.randomUUID(), startedAtEpoch:Date.now() / 1000, raceId:cleanText(raw.raceId, 40), steamId:steamGuid,
+      driverName:cleanText(raw.driverName || 'Piloto BSR', 100), serverHost:host,
+      serverPort:server.gamePort, serverHttpPort:server.httpPort, serverName:server.name || '',
+      track:track.actual, carModel:requestedCar, startedAt:new Date().toISOString()
+    };
+    const telemetryConfigPath = path.join(configDirectory, 'bsr_telemetry_session.json');
+    const telemetryConfigTemp = telemetryConfigPath + '.tmp';
+    await fsp.writeFile(telemetryConfigTemp, JSON.stringify(telemetrySession, null, 2), 'utf8');
+    await fsp.copyFile(telemetryConfigTemp, telemetryConfigPath);
+    await fsp.unlink(telemetryConfigTemp).catch(() => {});
     const updated = updateIniSections(original, {
       RACE:{ MODEL:requestedCar, MODEL_CONFIG:'', SKIN:selectedSkin, TRACK:track.track, CONFIG_TRACK:track.layout, CARS:1, AI_LEVEL:100, FIXED_SETUP:0, PENALTIES:1, JUMP_START_PENALTY:0, DRIFT_MODE:0, RACE_LAPS:0 },
       CAR_0:{ MODEL:'-', MODEL_CONFIG:'', SKIN:'', DRIVER_NAME:cleanText(raw.driverName || 'Piloto BSR', 100), NATIONALITY:'', NATION_CODE:'', TEAM:'', SETUP:'', BALLAST:0, RESTRICTOR:0 },
@@ -1153,16 +1331,30 @@ class BSRContentManager {
   }
 }
 
-function registerContentManager({ app, dialog, net, BrowserWindow, ipcMain, getMainWindow, actools = null }) {
-  const manager = new BSRContentManager({ app, dialog, net, BrowserWindow, actools });
+function registerContentManager({ app, dialog, net, BrowserWindow, ipcMain, getMainWindow, actools = null, telemetryConsent = false }) {
+  const manager = new BSRContentManager({ app, dialog, net, BrowserWindow, actools, telemetryConsent });
   const trusted = event => {
     const window = getMainWindow();
     if (!window || event.sender !== window.webContents) throw new Error('Origem não autorizada.');
     return window;
   };
-  ipcMain.handle('content:initialize', event => { trusted(event); return manager.initialize(); });
+  const guardTelemetrySetup = async operation => {
+    try { return await operation(); }
+    catch (error) {
+      if (telemetryConsent && ['BSR_ELEVATION_DENIED','BSR_TELEMETRY_SETUP_FAILED'].includes(error.code)) {
+        const message = error.code === 'BSR_ELEVATION_DENIED'
+          ? 'A autorização do Windows foi recusada. O BSR Race Telemetry não foi instalado e o launcher será encerrado.'
+          : 'Não foi possível instalar ou configurar o BSR Race Telemetry. O launcher será encerrado para manter a integração obrigatória completa.';
+        await dialog.showMessageBox({ type:'error', title:'BSR Race Telemetry obrigatório', message, buttons:['Sair'] }).catch(() => {});
+        app.quit();
+      }
+      throw error;
+    }
+  };
+  ipcMain.handle('content:initialize', event => { trusted(event); return guardTelemetrySetup(() => manager.initialize()); });
   ipcMain.handle('content:status', (event, packages) => { trusted(event); return manager.summary(Array.isArray(packages) ? packages : []); });
-  ipcMain.handle('content:choose-game', event => manager.chooseGamePath(trusted(event)));
+  ipcMain.handle('content:choose-game', event => { trusted(event); return guardTelemetrySetup(() => manager.chooseGamePath(trusted(event))); });
+  ipcMain.handle('content:car-metadata', async event => { trusted(event); await guardTelemetrySetup(() => manager.initialize()); return manager.getInstalledCarMetadata(); });
   ipcMain.handle('content:inspect-package', event => manager.inspectPackage(trusted(event)));
   ipcMain.handle('content:download', (event, pkg, sessionToken) => { trusted(event); return manager.download(pkg, event.sender, sessionToken); });
   ipcMain.handle('content:cancel-download', (event, slug) => { trusted(event); return manager.cancelDownload(slug); });
@@ -1173,8 +1365,8 @@ function registerContentManager({ app, dialog, net, BrowserWindow, ipcMain, getM
   ipcMain.handle('content:audit', (event, packages) => { trusted(event); return manager.audit(Array.isArray(packages) ? packages : []); });
   ipcMain.handle('content:repair', (event, pkg, sessionToken) => { trusted(event); return manager.repair(pkg, event.sender, sessionToken); });
   ipcMain.handle('content:clear-download', (event, slug) => { trusted(event); return manager.clearDownload(slug); });
-  ipcMain.handle('content:join', (event, config) => { trusted(event); return manager.joinServer(config); });
+  ipcMain.handle('content:join', (event, config) => { trusted(event); return guardTelemetrySetup(() => manager.joinServer(config)); });
   return manager;
 }
 
-module.exports = { BSRContentManager, registerContentManager, sanitizePackageMetadata, validateArchiveEntry, detectArchiveLayout, detectArchiveFormat, isOptionalArchiveMetadata, isInside, parseSteamLibraries, updateIniSections, cleanSessionToken, normalizeServerTrack, resolveServerTrack, normalizeOnlineServerInformation, googleDriveFileId, canonicalGoogleDriveUrl, googleDriveConfirmationUrl };
+module.exports = { APP_ID, REST_API_KEY, API_URL, BSRContentManager, registerContentManager, sanitizePackageMetadata, validateArchiveEntry, detectArchiveLayout, detectArchiveFormat, isOptionalArchiveMetadata, isInside, parseSteamLibraries, setIniValue, updateIniSections, cleanSessionToken, normalizeServerTrack, resolveServerTrack, normalizeOnlineServerInformation, googleDriveFileId, canonicalGoogleDriveUrl, googleDriveConfirmationUrl };

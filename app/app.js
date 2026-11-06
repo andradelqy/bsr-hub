@@ -21,6 +21,14 @@
   let hasRenderedRoute = false;
   let departure;
 
+  async function syncTelemetrySession() {
+    if (!window.electronAPI?.telemetry?.setSession || !window.BSR_API?.readSession) return;
+    const session = window.BSR_API.readSession();
+    const token = session?.kind === 'driver' ? session.sessionToken : '';
+    try { await window.electronAPI.telemetry.setSession(token); }
+    catch (error) { console.warn('[BSR Telemetry] Não foi possível sincronizar a sessão:', error.message); }
+  }
+
   function currentRoute() {
     const route = location.hash.replace(/^#\/?/,'').split('/')[0];
     return V.routes[route] ? route : 'dashboard';
@@ -91,7 +99,9 @@
     </section>`;
     document.getElementById('accessChangeAccount')?.addEventListener('click', async event => {
       const button = event.currentTarget; button.disabled = true; button.textContent = 'Encerrando sessão…';
-      await window.BSR_API.logout(); location.replace('login.html');
+      await window.BSR_API.logout();
+      await window.electronAPI?.telemetry?.setSession('').catch(() => {});
+      location.replace('login.html');
     });
   }
 
@@ -117,6 +127,7 @@
     C.openModal(driver ? 'Conta e permissões' : 'Conta administrativa', `${identity}<div class="form-grid">${driver ? '<a class="button" href="#/career" data-close-modal>Minha carreira</a>' : ''}${B.state.isAdmin ? '<a class="button primary" href="#/admin" data-close-modal>Central administrativa</a>' : ''}<a class="button" href="#/settings" data-close-modal>Sistema e conexões</a><button class="button danger" id="logoutDriver" type="button">${session?.kind === 'admin' && window.BSR_API.hasDriverSessionToRestore() ? 'Voltar ao perfil do piloto' : 'Sair da conta'}</button></div>`, null);
     document.getElementById('logoutDriver').addEventListener('click', async () => {
       const restored = session?.kind === 'admin' ? await window.BSR_API.leaveAdminMode() : (await window.BSR_API.logout(), null);
+      await window.electronAPI?.telemetry?.setSession(restored?.sessionToken || '').catch(() => {});
       const steamId = B.stored('steamId');
       if (session?.kind !== 'admin' || !restored) {
         for (const storage of [sessionStorage, localStorage]) {
@@ -140,6 +151,7 @@
     try {
       B.cache.clear();
       await B.bootstrap(true);
+      await syncTelemetrySession();
       updateConnection(); updateAccount(); await route();
       C.toast('Hub sincronizado','Calendário, perfil e competições foram atualizados.','success');
     } catch (error) { C.toast('Falha na sincronização',error.message,'error'); }
@@ -152,6 +164,7 @@
     C.renderNav(currentRoute());
     document.getElementById('view').innerHTML = '<div class="loading-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
     await B.bootstrap();
+    await syncTelemetrySession();
     updateConnection(); updateAccount(); await route();
     const hero = document.querySelector('.launcher-art');
     if (hero) {

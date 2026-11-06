@@ -48,4 +48,4 @@ Resultados oficiais seguem um fluxo versionado: o cliente interpreta os arquivos
 
 ## Publicação
 
-Antes de produção, siga `BACK4APP_SETUP.md`, publique o Cloud Code e aplique as CLPs. O frontend pode ser hospedado como site estático e também é carregado pelo Electron.
+Antes de produção, siga `../operations/BACK4APP_SETUP.md`, publique o Cloud Code e aplique as CLPs. O frontend pode ser hospedado como site estático e também é carregado pelo Electron.

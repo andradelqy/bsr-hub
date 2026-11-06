@@ -25,7 +25,7 @@ for (const entry of assetFiles) {
   fs.copyFileSync(path.join(root, entry), destination);
 }
 
-const archive = path.join(root, 'dist', `BSR-Hub-Web-${version}.zip`);
+const archive = path.join(root, 'dist', 'web', `BSR-Hub-Web-${version}.zip`);
 fs.mkdirSync(path.dirname(archive), { recursive:true });
 if (process.platform === 'win32') {
   const quote = value => `'${value.replaceAll("'", "''")}'`;

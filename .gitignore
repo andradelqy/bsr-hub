@@ -12,6 +12,7 @@ config.js
 dist/
 dist-*/
 web-dist/
+web-dist.zip
 cloud-upload/
 cloud-upload-v*/
 
@@ -20,6 +21,13 @@ native/**/bin/
 native/**/obj/
 native/**/dist/
 native/**/fixtures/
+
+# Python cache and compiled bytecode
+**/__pycache__/
+*.py[cod]
+
+# Local editor/integration configuration
+.vscode/mcp.json
 
 # Test screenshots and local runtime files
 tests/artifacts/
@@ -30,3 +38,7 @@ tests/artifacts/
 # OS/editor files
 .DS_Store
 Thumbs.db
+
+# Local archives and generated deployment staging
+archive/
+deploy/cloud-code/current/

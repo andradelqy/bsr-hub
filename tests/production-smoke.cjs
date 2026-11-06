@@ -6,10 +6,13 @@ const assert = require('node:assert/strict');
 const context = { window: {} };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '..', 'config.js'), 'utf8'), context);
-const { APP_ID, REST_API_KEY, BASE_URL } = context.window;
+const { APP_ID, CLIENT_KEY, BASE_URL } = context.window;
+if (!CLIENT_KEY || /^YOUR_|^PREENCHER/i.test(CLIENT_KEY)) {
+  throw new Error('Configure window.CLIENT_KEY em config.js antes do smoke test de produção.');
+}
 const headers = {
   '[REDACTED_BACK4APP_SECRET]': APP_ID,
-  'X-Parse-REST-API-Key': REST_API_KEY,
+  'X-Parse-Client-Key': CLIENT_KEY,
   'Content-Type': 'application/json'
 };
 

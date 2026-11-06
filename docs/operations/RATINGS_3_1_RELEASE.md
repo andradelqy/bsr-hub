@@ -1,4 +1,19 @@
-# BSR Hub 1.6.16 — motor de ratings 3.1
+# BSR Hub 1.6.18 — identificação automática de mods e auditoria BSR Rating 3.1.1
+
+## Correções desta versão
+
+- O launcher indexa automaticamente `content/cars/*/ui/ui_car.json` da instalação local do Assetto Corsa e usa classe, tags e identificador do mod para reconhecer carros sem cadastro manual.
+- Quando a classe só é genérica nos metadados, o sistema usa categorias conservadoras como `GT`, `Touring` ou `Formula`. Carros sem evidência suficiente permanecem `Unknown` e bloqueiam publicação oficial até instalar o mod ou revisar a classe.
+- A prévia mostra a origem e confiança da classe; correções manuais ficam registradas como `manual-review`.
+- Falha coletiva do servidor suspende os efeitos esportivos de toda a sessão. Falha isolada isenta apenas o piloto afetado, mantendo os demais elegíveis quando o grid válido atende às regras.
+- Classes não identificadas não são agrupadas juntas para calcular habilidade; apenas participantes elegíveis contam para o grid mínimo.
+- Novas disciplinas começam com iRating 1600, Safety 2.50 e licença R independentes quando ainda não possuem histórico próprio.
+- A migração de ratings percorre todas as páginas de perfis, inclusive acima de 1.000 registros; valores históricos zero são preservados.
+- A confiabilidade preserva o prior legado nas novas entradas do histórico; carteiras inválidas migram para R e a carteira S não acumula MPR. MPR exige evidência de incidentes; a versão interna do motor é `bsr-rating-v3.1.1`.
+- O iRating continua zero-sum por classe. A sessão é bloqueada quando classe desconhecida impedir a separação confiável dos grupos.
+- Protestos resolvem pilotos por SteamID64 canônico, campo legado `steamId` ou nome exato sem diferenciar maiúsculas, acentos e espaços. Nomes duplicados pedem o SteamID64; auto-protesto continua bloqueado.
+- O launcher calcula SHA-256 sobre os bytes originais do JSON/log, sem transformar BOM, CRLF ou codificação antes do hash.
+- Cloud Code mantém compatibilidade com launchers antigos: quando o hash bruto não chega, gera uma impressão digital determinística da classificação normalizada e exibe aviso de auditoria. Esse fingerprint não é apresentado como hash binário do arquivo original.
 
 ## Escopo
 
@@ -50,7 +65,7 @@ corrida; configure os eventos futuros de acordo com a licença pretendida.
 
 ## Implantação no Back4App
 
-O diretório `cloud-upload-v14` contém os arquivos preparados. Publique em conjunto:
+O diretório `deploy/cloud-code/current` contém os arquivos preparados. Publique em conjunto:
 
 - `bsr-secure-v14.js`
 - `rating-engine.js`
@@ -60,7 +75,7 @@ O diretório `cloud-upload-v14` contém os arquivos preparados. Publique em conj
 - `main.js` (carrega apenas `bsr-secure-v14`)
 
 Antes de substituir, guarde uma cópia da versão remota atual. Não misture os
-módulos de ratings 3.0 e 3.1. Ao abrir o processador de resultados no Hub 1.6.16,
+módulos de ratings 3.0 e 3.1. Ao abrir o processador de resultados no Hub 1.6.18,
 uma conta administrativa inicializa a publicação segura automaticamente. Como
 alternativa operacional, execute uma vez o Cloud Job
 `initializeRatingPublication`. Não execute o bootstrap simultaneamente. Ele cria

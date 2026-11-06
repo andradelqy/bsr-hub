@@ -12,6 +12,7 @@ const {
   isInside,
   parseSteamLibraries,
   updateIniSections,
+  setIniValue,
   cleanSessionToken,
   detectArchiveFormat,
   resolveServerTrack,
@@ -109,6 +110,14 @@ assert.match(ini, /\[RACE\][\s\S]*MODEL=car/);
 assert.match(ini, /\[REMOTE\]\r\nSERVER_IP=race\.bsr\.com\.br\r\nSERVER_PORT=9600\r\nACTIVE=1/);
 assert.match(ini, /\[AUTOSPAWN\]\r\nACTIVE=1/);
 assert.equal((ini.match(/\[REMOTE\]/g) || []).length, 1);
+const replayAutosaveSource = ['[REPLAY]','MAX_SIZE_MB=26','','[QUALITY]','LEVEL=3','','[AUTOSAVE]','ENABLED=0','RACE=2','QUALIFY=1','OTHERS=1','MIN_TIME_SECONDS=30'].join('\r\n');
+const replayAutosaveIni = setIniValue(replayAutosaveSource, 'AUTOSAVE', 'ENABLED', '1');
+assert.equal((replayAutosaveIni.match(/\[AUTOSAVE\]/g) || []).length, 1);
+assert.match(replayAutosaveIni, /ENABLED=1/);
+assert.match(replayAutosaveIni, /RACE=2/);
+assert.match(replayAutosaveIni, /QUALIFY=1/);
+assert.match(replayAutosaveIni, /OTHERS=1/);
+assert.match(replayAutosaveIni, /MIN_TIME_SECONDS=30/);
 const correctedJoinIni = updateIniSections('[RACE]\r\nMODEL=old_car\r\nTRACK=rt_daytona\r\nCONFIG_TRACK=sportscar_m4x\r\n\r\n[REMOTE]\r\nSERVER_PORT=8847', {
   RACE:{ MODEL:'urd_radical_sr10xxr_2023', SKIN:'default', TRACK:'zw_midohio', CONFIG_TRACK:'c', CARS:1 },
   REMOTE:{ SERVER_PORT:9847, SERVER_HTTP_PORT:8847, REQUESTED_CAR:'urd_radical_sr10xxr_2023', ACTIVE:1 }
@@ -141,6 +150,7 @@ assert.match(preload, /download:\s*\(pkg, sessionToken\)/);
 assert.match(preload, /cancelDownload:\s*slug\s*=>\s*ipcRenderer\.invoke\('content:cancel-download', slug\)/);
 assert.match(preload, /cancelInstall:\s*slug\s*=>\s*ipcRenderer\.invoke\('content:cancel-install', slug\)/);
 assert.match(preload, /repair:\s*\(pkg, sessionToken\)/);
+assert.match(preload, /carMetadata:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('content:car-metadata'\)/, 'renderer receives only the sanitized local car metadata catalogue');
 assert.match(preload, /audit:\s*packages/);
 assert.doesNotMatch(preload, /actools:install|actools:inspect/, 'renderer must not bypass the canonical BSR content flow');
 assert.doesNotMatch(preload, /writeFile|readFile|exec|spawn/, 'renderer must not receive generic filesystem or process capabilities');
@@ -174,6 +184,38 @@ assert.doesNotMatch(preload, /writeFile|readFile|exec|spawn/, 'renderer must not
       downloadUrl:'https://cdn.example.com/bsr-test-car.zip', sha256:crypto.createHash('sha256').update(archive).digest('hex'), sizeBytes:archive.length
     });
     const fakeApp = { getPath:name => name === 'userData' ? userData : documents };
+    const replayCfgDirectory = path.join(documents, 'Assetto Corsa', 'cfg');
+    fs.mkdirSync(replayCfgDirectory, { recursive:true });
+    const replayIniPath = path.join(replayCfgDirectory, 'replay.ini');
+    const replayOriginal = ['[REPLAY]','MAX_SIZE_MB=26','','[QUALITY]','LEVEL=3','','[AUTOSAVE]','ENABLED=0','RACE=2','QUALIFY=1','OTHERS=1','MIN_TIME_SECONDS=30'].join('\r\n');
+    fs.writeFileSync(replayIniPath, replayOriginal);
+    const pythonIniPath = path.join(replayCfgDirectory, 'python.ini');
+    const pythonOriginal = '[ACRATINGSCOLLECTOR]\r\nACTIVE=0\r\n';
+    fs.writeFileSync(pythonIniPath, pythonOriginal);
+    const gameplayIniPath = path.join(replayCfgDirectory, 'gameplay.ini');
+    const gameplayOriginal = '[PYTHON]\r\nENABLE_PYTHON=1\r\n\r\n[OPTIONS]\r\nUSE_MPH=0';
+    fs.writeFileSync(gameplayIniPath, gameplayOriginal);
+    const replayManager = new BSRContentManager({ app:fakeApp, dialog:{}, net:{}, BrowserWindow:{}, telemetryConsent:true });
+    replayManager.state.gamePath = gamePath;
+    await replayManager.initialize();
+    const replayUpdated = fs.readFileSync(replayIniPath, 'utf8');
+    assert.match(replayUpdated, /ENABLED=1/);
+    assert.match(replayUpdated, /MAX_SIZE_MB=2000/);
+    assert.match(replayUpdated, /RACE=4/);
+    assert.match(replayUpdated, /QUALIFY=1/);
+    assert.match(replayUpdated, /OTHERS=1/);
+    assert.match(replayUpdated, /MIN_TIME_SECONDS=30/);
+    assert.equal(fs.readFileSync(replayIniPath + '.bsr-backup', 'utf8'), replayOriginal, 'the original replay settings must be backed up exactly');
+    const telemetryAppPath = path.join(gamePath, 'apps', 'python', 'BSR_RACE_TELEMETRY', 'BSR_RACE_TELEMETRY.py');
+    assert.equal(fs.existsSync(telemetryAppPath), true, 'the launcher must install the in-game telemetry app');
+    const pythonUpdated = fs.readFileSync(pythonIniPath, 'utf8');
+    assert.match(pythonUpdated, /\[BSR_RACE_TELEMETRY\]\r\nACTIVE=1/);
+    assert.match(pythonUpdated, /\[ACRATINGSCOLLECTOR\]\r\nACTIVE=0/, 'existing Python apps must remain enabled/disabled as they were');
+    assert.equal(fs.readFileSync(pythonIniPath + '.bsr-backup', 'utf8'), pythonOriginal);
+    const gameplayUpdated = fs.readFileSync(gameplayIniPath, 'utf8');
+    assert.match(gameplayUpdated, /\[PYTHON\]\r\nENABLE_PYTHON=1/);
+    assert.match(gameplayUpdated, /\[OPTIONS\]\r\nUSE_MPH=0/);
+    assert.equal(gameplayUpdated, gameplayOriginal, 'an already-enabled Python setting must not be rewritten');
 
     const mismatchPkg = sanitizePackageMetadata({ ...pkg, objectId:'size123', slug:'size-mismatch', sizeBytes:archive.length - 7 });
     const downloadManager = new BSRContentManager({
@@ -245,6 +287,16 @@ assert.doesNotMatch(preload, /writeFile|readFile|exec|spawn/, 'renderer must not
       { entries:[{ kind:'CarContentEntry', id:'ac_friends_reanult_rs01_16' }] }
     ), /catálogo é “ac_friends_renault_rs01_16”[\s\S]*pacote contém “ac_friends_reanult_rs01_16”/, 'the mismatch must identify both the catalog and archive IDs');
     manager.state.gamePath = gamePath;
+    const carUiDirectory = path.join(gamePath, 'content', 'cars', 'bsr_test_car', 'ui');
+    fs.mkdirSync(carUiDirectory, { recursive:true });
+    fs.writeFileSync(path.join(carUiDirectory, 'ui_car.json'), JSON.stringify({
+      name:'BSR Test GT3', brand:'BSR', class:'GT3', tags:['GT3','race'], description:'Carro de teste'
+    }));
+    const installedCars = await manager.getInstalledCarMetadata();
+    assert.equal(installedCars.available, true);
+    assert.equal(installedCars.metadataCount, 1);
+    assert.equal(installedCars.cars[0].id, 'bsr_test_car');
+    assert.equal(installedCars.cars[0].carClass, 'GT3', 'the launcher must expose installed ui_car.json class metadata');
     manager.state.downloads[pkg.slug] = { version:pkg.version, path:zipPath, sha256:pkg.sha256, sizeBytes:pkg.sizeBytes };
     manager.canonicalPackage = async () => pkg;
     const installed = await manager.install({ objectId:pkg.objectId });

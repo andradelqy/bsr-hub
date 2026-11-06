@@ -7,9 +7,9 @@ assert.notEqual(Policy.sessionIdentity(base), Policy.sessionIdentity({ ...base, 
 assert.notEqual(Policy.sessionIdentity(base), Policy.sessionIdentity({ ...base, sessionDate:'2026-10-20T21:00:00Z' }));
 assert.throws(() => Policy.sessionIdentity({ ...base, sessionDate:'invalid' }));
 assert.equal(Policy.hash({ b:2, a:1 }), Policy.hash({ a:1, b:2 }));
-const mpr = { rated:true, driver:{}, corners:300, incidents:2, completion:1, license:'R' };
+const mpr = { rated:true, driver:{ incidentEvidence:'reported' }, corners:300, incidents:2, completion:1, license:'R' };
 assert.equal(Policy.mprDecision(mpr).eligible, true);
-for (const override of [{ corners:20 }, { incidents:90 }, { completion:0.2 }, { driver:{ didNotStart:true } }, { driver:{ disconnected:true } }]) {
+for (const override of [{ corners:20 }, { incidents:90 }, { completion:0.2 }, { driver:{ didNotStart:true } }, { driver:{ disconnected:true } }, { driver:{ incidentEvidence:'missing' } }]) {
   assert.equal(Policy.mprDecision({ ...mpr, ...override }).eligible, false);
 }
 assert.equal(Policy.mprDecision({ ...mpr, license:'A' }).eligible, false);

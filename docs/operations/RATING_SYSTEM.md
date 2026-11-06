@@ -1,6 +1,6 @@
 # BSR Rating v3
 
-Atualização 3.1 / Hub 1.6.16: veja [RATINGS_3_1_RELEASE.md](RATINGS_3_1_RELEASE.md).
+Atualização 3.1.1 / Hub 1.6.18: veja [RATINGS_3_1_RELEASE.md](RATINGS_3_1_RELEASE.md).
 As regras de publicação, MPR, desconexões e recuperação descritas nessa nota
 substituem os detalhes operacionais anteriores deste documento.
 
@@ -27,7 +27,7 @@ O modelo combina princípios públicos de iRacing e RaceControl/Le Mans Ultimate
 
 ## BSR Rating
 
-O `bsr-rating-v3.0.0` realiza confrontos pareados entre todos os pilotos da mesma classe. Cada par transfere pontos do resultado abaixo da expectativa para o resultado acima dela. A soma é exatamente zero por classe após o arredondamento.
+O `bsr-rating-v3.1.1` realiza confrontos pareados entre todos os pilotos da mesma classe. Cada par transfere pontos do resultado abaixo da expectativa para o resultado acima dela. A soma é exatamente zero por classe após o arredondamento.
 
 Características:
 
@@ -69,7 +69,7 @@ Multiplicadores estão preparados para diferentes sessões: corrida `1.00`, clas
 
 ## Carteiras e MPR
 
-Cada disciplina possui carteira, SR e MPR próprios. Uma corrida conta para MPR somente quando é válida para rating, o piloto não é DSQ e completa ao menos 50% das voltas do líder da classe.
+Cada disciplina possui carteira, SR e MPR próprios. Uma corrida conta para MPR somente quando é válida para rating, o piloto não é DSQ, completa ao menos 50% das voltas do líder da classe e há evidência de incidentes (pontos explícitos, eventos do arquivo/plugin ou revisão manual).
 
 | Promoção | SR mínimo | MPR |
 |---|---:|---:|
@@ -79,11 +79,11 @@ Cada disciplina possui carteira, SR e MPR próprios. Uma corrida conta para MPR 
 | B → A | 3,75 | 8 |
 | A → S | 4,00 | 10 |
 
-Somente SR abaixo de `1.00` causa rebaixamento imediato. Entre `1.00` e `1.99`, o piloto fica em risco, mas uma única corrida ruim não derruba a carteira automaticamente.
+Somente SR abaixo de `1.00` causa rebaixamento imediato. Entre `1.00` e `1.99`, o piloto fica em risco, mas uma única corrida ruim não derruba a carteira automaticamente. `S` é o teto da carteira e não acumula MPR para uma promoção inexistente.
 
 ## Contact Badge e confiabilidade
 
-O badge evita usar apenas uma corrida para rotular o piloto:
+O badge evita usar apenas uma corrida para rotular o piloto. O valor de confiabilidade legado é o prior histórico na primeira largada migrada; o prior permanece gravado para não provocar salto artificial na corrida seguinte. Novos pilotos começam com 90%:
 
 - menos de cinco largadas: `Rookie`;
 - histórico limpo consistente: `Good`;
@@ -91,25 +91,35 @@ O badge evita usar apenas uma corrida para rotular o piloto:
 - contato frequente sustentado: `Warning`;
 - comportamento extremo por histórico suficiente: `Probation`.
 
-Desconexão não é automaticamente marcada como rage quit. A confiabilidade distingue finalização, DNF e abandono confirmado.
+Desconexão não é automaticamente marcada como rage quit; a confiabilidade distingue finalização, DNF e abandono confirmado.
 
 ## Fluxo oficial
 
 1. O administrador importa `results.json` ou logs.
-2. O launcher identifica SteamID, carros, classificação e incidentes.
+2. O launcher identifica SteamID, classe de carros pelo `ui_car.json`/ID do mod, classificação e incidentes. Categorias sem metadados suficientes são sinalizadas e não entram silenciosamente em uma publicação oficial.
 3. O administrador revisa classe, posição, status, incidentes e penalidades.
 4. O Cloud Code valida SteamID64, duplicidades e elegibilidade geral/por classe.
 5. A prévia mostra posição esperada, SOF, iR, SR, CPI, badge, carteira e MPR.
 6. A publicação grava `RaceResult`, atualiza o piloto e cria um ledger imutável.
 7. A chave `raceId:sessionType` impede duplicação do mesmo resultado.
 
+## Identificação automática de classes
+
+No launcher Electron, o catálogo local é lido de `content/cars/*/ui/ui_car.json` da instalação do Assetto Corsa. O processador cruza o ID/modelo do carro com `class`, `carClass`, `tags`, nome e descrição. A classe explícita do resultado tem prioridade; em seguida vêm o ID já conhecido e os metadados instalados. O editor exibe a fonte/confiança e marca alterações do administrador como `manual-review`.
+
+Quando o mod só informa uma categoria ampla, o sistema conserva `GT`, `Touring`, `Formula`, `Drift`, `Drag`, `Rally`, `Street`, `Sport` ou `Vintage`; não inventa `GT3` ou `GT4`. Se nem os metadados nem o ID permitirem classificar, o carro permanece `Unknown` e o Cloud Code bloqueia a sessão oficial até que o mod seja instalado/atualizado ou a classe seja revisada. A página web sem acesso à instalação local usa apenas os dados já presentes no arquivo/regras; a leitura do catálogo instalado ocorre no launcher desktop.
+
+## Falhas de servidor e evidência
+
+A opção de falha coletiva impede habilidade, Safety, MPR, confiabilidade e pontos esportivos para toda a sessão. Uma falha isolada exclui apenas aquele piloto; o restante do grid continua elegível quando os mínimos geral e por classe ainda são cumpridos. Um log de leaderboard sem plugin/eventos ou pontos explícitos não é considerado prova de telemetria de incidentes: o SR daquele piloto permanece suspenso. O administrador pode revisar os pontos antes da prévia, e qualquer mudança invalida a prévia anterior.
+
 ## Migração v3
 
 Após publicar o Cloud Code, execute **Central administrativa → Inicializar motor v3** ou o job protegido `migrateRatingsV3Job`.
 
-A migração é idempotente e:
+A migração é idempotente, pagina todos os registros de `Driver` em lotes de até 1.000 e:
 
-- preserva os valores visíveis de iR e SR;
+- preserva os valores visíveis de iR e SR (inclusive zeros válidos);
 - converte perfis v2 sem zerar corridas;
 - cria Safety e carteira por disciplina;
 - mantém o histórico legado como compatibilidade;

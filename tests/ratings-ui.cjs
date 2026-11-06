@@ -2,6 +2,12 @@ const { app, BrowserWindow } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
+
+const ratingSourceData = { TrackName:'Interlagos',Date:'2026-10-20T20:00:00Z',Events:[],Cars:[{CarId:4,Model:'my_custom_ferrari_mod',DriverName:'Teste',DriverGuid:'76561198000000001'}],Result:[{CarId:4,Car:4,DriverName:'Teste',DriverGuid:'76561198000000001',NumLaps:20,IncidentPoints:2}] };
+const rawRatingSource = `\uFEFF${JSON.stringify(ratingSourceData)}\r\n`;
+const expectedSourceHash = crypto.createHash('sha256').update(rawRatingSource,'utf8').digest('hex');
+const rawRatingSourceBase64 = Buffer.from(rawRatingSource,'utf8').toString('base64');
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
@@ -59,10 +65,12 @@ app.whenReady().then(async () => {
     assert.equal(await run("document.querySelector('#processorMinimum').value"), '4');
     assert.equal(await run("document.querySelector('#processorClassMinimum').value"), '3');
     assert.equal(await run("document.querySelector('#processorHeat').value"), '1');
+    await run(`window.electronAPI={content:{carMetadata:async()=>({available:true,cars:[{id:'my_custom_ferrari_mod',name:'Ferrari Custom',brand:'Modder',carClass:'GT3',tags:['GT3'],metadataAvailable:true}]})}}; true`);
+    assert.equal(await run("document.querySelector('#processorServerFailure').checked"),false);
     const ratingFlow = await run(`(async()=>{
       const race=document.querySelector('#processorRace'); race.value='race-1'; race.dispatchEvent(new Event('change'));
-      const data={TrackName:'Interlagos',Date:'2026-10-20T20:00:00Z',Events:[],Result:[{DriverName:'Teste',DriverGuid:'76561198000000001',CarClass:'GT3',NumLaps:20,IncidentPoints:2}]};
-      const transfer=new DataTransfer();transfer.items.add(new File([JSON.stringify(data)],'result.json',{type:'application/json'}));
+      const encoded='${rawRatingSourceBase64}';const binary=atob(encoded);const bytes=Uint8Array.from(binary,char=>char.charCodeAt(0));
+      const transfer=new DataTransfer();transfer.items.add(new File([bytes],'result.json',{type:'application/json'}));
       document.querySelector('#resultsFile').files=transfer.files;
       document.querySelector('#resultsFile').dispatchEvent(new Event('change'));
       document.querySelector('#parseRaceFiles').click();
@@ -71,11 +79,15 @@ app.whenReady().then(async () => {
     assert.equal(ratingFlow,true);
     for(let attempt=0;attempt<20;attempt++) { if(await run("Boolean(document.querySelector('#previewImport'))")) break; await delay(100); }
     await run(`BSR_API.previewRaceImport=async payload=>{
+      window.__ratingPreviewPayload=payload;
       if(!/^[a-f0-9]{64}$/.test(payload.sourceHash)) throw Error('hash missing');
-      return {previewToken:'test-token',engineVersion:'bsr-rating-v3.1.0',totals:{drivers:1,rated:1,incidents:2},rows:[{name:'Teste',officialPosition:1,classPosition:1,carClass:'GT3',points:25,ratingReason:'Válida para rating',expectedFinish:2,reliability:100,oldLicense:'R',newLicense:'R',oldIRating:1600,newIRating:1620,deltaIRating:20,oldSafetyRating:2.5,newSafetyRating:2.6,deltaSafetyRating:.1,countedCorners:200,safetyWindowCorners:1200,safetyWindowIncidents:35,mprReasons:[]}],warnings:[]};
+      return {previewToken:'test-token',engineVersion:'bsr-rating-v3.1.1',totals:{drivers:1,rated:1,incidents:2},rows:[{name:'Teste',officialPosition:1,classPosition:1,carClass:'GT3',points:25,ratingReason:'Válida para rating',expectedFinish:2,reliability:100,oldLicense:'R',newLicense:'R',oldIRating:1600,newIRating:1620,deltaIRating:20,oldSafetyRating:2.5,newSafetyRating:2.6,deltaSafetyRating:.1,countedCorners:200,safetyWindowCorners:1200,safetyWindowIncidents:35,mprReasons:[]}],warnings:[]};
     }; document.querySelector('#processorCorners').value='10';document.querySelector('#previewImport').click();`);
     for(let attempt=0;attempt<20;attempt++) { if(await run("Boolean(document.querySelector('.processor-preview'))")) break; await delay(100); }
     assert.equal(await run("Boolean(document.querySelector('#commitImport'))"),true);
+    assert.equal(await run("window.__ratingPreviewPayload.sourceHash"),expectedSourceHash,'SHA-256 must be calculated from the original file bytes, including BOM and CRLF');
+    assert.equal(await run("window.__ratingPreviewPayload.drivers[0].carClass"),'GT3','the real admin UI must apply the installed-car metadata catalogue');
+    assert.equal(await run("window.__ratingPreviewPayload.drivers[0].carClassSource"),'installed-metadata');
     assert.match(await run("document.querySelector('.processor-preview details').textContent"),/1200 curvas/);
     await run("const incident=document.querySelector('[data-field=incidentPoints]');incident.value='4';incident.dispatchEvent(new Event('change'));");
     assert.equal(await run("Boolean(document.querySelector('#commitImport'))"),false,'editing incidents invalidates the preview');

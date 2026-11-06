@@ -21,7 +21,7 @@ const responseQueue = [];
 const context = {
   window: {
     APP_ID: 'test-app',
-    REST_API_KEY: 'test-client-key',
+    CLIENT_KEY: 'test-client-key',
     BASE_URL: 'https://parseapi.back4app.com'
   },
   localStorage,
@@ -53,6 +53,8 @@ vm.runInContext(source, context, { filename: 'api.js' });
   assert.equal(requests.at(-1).options.method, 'POST', 'login credentials must not be sent in the URL');
   assert.equal(requests.at(-1).url, 'https://parseapi.back4app.com/login');
   assert.equal(requests.at(-1).options.headers['X-Parse-Revocable-Session'], '1');
+  assert.equal(requests.at(-1).options.headers['X-Parse-Client-Key'], 'test-client-key');
+  assert.equal('X-Parse-REST-API-Key' in requests.at(-1).options.headers, false, 'client requests must never send the REST API Key');
   assert.deepEqual(JSON.parse(requests.at(-1).options.body), { username: 'admin', password: 'password' });
 
   api.saveSession(login, true, 'admin');
@@ -98,6 +100,19 @@ vm.runInContext(source, context, { filename: 'api.js' });
   assert.match(callback, /received!==expected/, 'browser callback must verify its state');
 
   const apiClient = fs.readFileSync(path.join(root, 'api.js'), 'utf8');
+  const configSource = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
+  const configExample = fs.readFileSync(path.join(root, 'config.example.js'), 'utf8');
+  const uploaderSource = fs.readFileSync(path.join(root, 'telemetry', 'uploader.js'), 'utf8');
+  const mainSource = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  assert.match(apiClient, /X-Parse-Client-Key/);
+  assert.doesNotMatch(apiClient, /REST_API_KEY|X-Parse-REST-API-Key/);
+  assert.doesNotMatch(configSource, /REST_API_KEY|X-Parse-REST-API-Key/);
+  assert.doesNotMatch(configExample, /REST_API_KEY|X-Parse-REST-API-Key/);
+  assert.match(uploaderSource, /X-Parse-Client-Key/);
+  assert.doesNotMatch(uploaderSource, /X-Parse-JavaScript-Key|X-Parse-REST-API-Key/);
+  assert.match(mainSource, /loadBack4AppClientKey/);
+  assert.match(configSource, /window\.CLIENT_KEY\s*=/);
+  assert.doesNotMatch(configSource, /window\.REST_API_KEY\s*=/);
   const components = fs.readFileSync(path.join(root, 'app', 'components.js'), 'utf8');
   assert.match(apiClient, /async getRaceResults\(sessionId, raceId\)[\s\S]*?cloud\('getRaceResults',[\s\S]*?raceId:/, 'the launcher must query published results by session and race id');
   assert.match(components, /race\.resultsSessionId \|\| race\.sessionId[\s\S]*?getRaceResults\(resultsKey, race\.id\)/, 'the results drawer must prefer the canonical publication link');

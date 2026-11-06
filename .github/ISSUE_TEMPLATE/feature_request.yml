@@ -1,0 +1,46 @@
+name: Solicitação de funcionalidade
+description: Propor uma melhoria ou nova funcionalidade para o BSR Hub.
+title: "[FEATURE] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qual necessidade ou problema queremos resolver?
+      description: Explique quem é afetado e em qual situação.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solução proposta
+      description: Descreva o resultado esperado, sem impor uma implementação técnica.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critérios de aceite
+      description: Como saberemos que a funcionalidade está pronta?
+      placeholder: |
+        - [ ] Cenário 1...
+        - [ ] Cenário 2...
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Prioridade sugerida
+      options:
+        - Crítica
+        - Alta
+        - Normal
+        - Baixa
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Referências ou observações
+      description: Links, imagens ou contexto adicional. Não inclua segredos nem dados pessoais.

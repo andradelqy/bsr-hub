@@ -1,0 +1,11 @@
+# EXEMPLO — não é aplicado enquanto o arquivo não se chamar CODEOWNERS.
+# Substitua @USUARIO_QC pelo username real do GitHub e copie para .github/CODEOWNERS.
+# O proprietário deve continuar sendo o único administrador e responsável por produção.
+#
+# * @USUARIO_QC
+# /cloud/ @USUARIO_QC
+# /api.js @USUARIO_QC
+# /preload.js @USUARIO_QC
+# /main.js @USUARIO_QC
+#
+# Não ative este arquivo com o placeholder. Confirme os usernames primeiro.

@@ -4,7 +4,7 @@
 // controla volatilidade e confiança sem criar pontos apenas por participar.
 // Safety, carteira e MPR também são isolados por disciplina.
 
-const VERSION = 'bsr-rating-v3.1.0';
+const VERSION = 'bsr-rating-v3.1.1';
 const INITIAL_SIGMA = 25 / 3;
 const MIN_SIGMA = 1.5;
 const TAU = 25 / 300;
@@ -25,12 +25,14 @@ const round = (value, digits = 0) => {
 };
 
 function disciplineFor(carClass, explicit) {
-  const selected = String(explicit || '').trim().toLowerCase();
-  if (['road', 'formula', 'oval', 'drift'].includes(selected)) return selected;
   const value = String(carClass || '').toLowerCase();
-  if (/\b(f1|f2|f3|f4|formula|indy|super formula|rss fh|vrc formula)\b/.test(value)) return 'formula';
+  // A recognizable vehicle class outranks stale discipline labels sent by
+  // older launchers (which often defaulted every result to "road").
+  if (/\b(f1|f2|f3|f4|formula|indy|super formula|open.?wheel|openwheel|rss fh|vrc formula)\b/.test(value)) return 'formula';
   if (/\b(nascar|oval|stock car|stockcar|arca|truck)\b/.test(value)) return 'oval';
   if (/\b(drift|drifting)\b/.test(value)) return 'drift';
+  const selected = String(explicit || '').trim().toLowerCase();
+  if (['road', 'formula', 'oval', 'drift'].includes(selected)) return selected;
   return 'road';
 }
 
@@ -249,16 +251,23 @@ function incidentPoints(event = {}) {
 
 function updateReliability(history, event = {}) {
   const previous = Array.isArray(history) ? history : [];
+  // Preserve the legacy reliability as the 10-start prior for profiles that
+  // have no v3 history. Persist that prior in each new entry so subsequent
+  // races do not suddenly replace a legacy baseline with the default 90%.
+  const storedBaseline = previous.find(item => Number.isFinite(Number(item.baselineReliability)))?.baselineReliability;
+  const baselinePercent = clamp(finite(storedBaseline, previous.length ? 90 : event.baselineReliability ?? 90), 0, 100);
+  const baseline = baselinePercent / 10;
+  const earnedBefore = previous.reduce((sum, item) => sum + clamp(finite(item.score), 0, 1), 0);
+  const valueBefore = Math.round((baseline + earnedBefore) / (10 + previous.length) * 100);
   if (event.serverFailure || event.didNotStart || (event.disconnected && !event.rageQuit)) {
-    const earned = previous.reduce((sum, item) => sum + clamp(finite(item.score), 0, 1), 0);
-    return { history:previous, reliability:Math.round((9 + earned) / (10 + previous.length) * 100),
+    return { history:previous, reliability:valueBefore,
       starts:previous.length, completed:previous.filter(item => finite(item.score) >= 1).length,
       excluded:true, reason:event.serverFailure ? 'Falha do servidor' : event.didNotStart ? 'Não largou' : 'Desconexão sem abandono confirmado' };
   }
   const score = event.noShow ? 0 : event.disconnected || event.rageQuit ? 0 : event.dnf ? 0.5 : 1;
-  const next = [...previous, { score, at:event.at || new Date().toISOString(), status:event.status || (score === 1 ? 'finished' : score === 0 ? 'disconnected' : 'dnf') }].slice(-RELIABILITY_WINDOW);
+  const next = [...previous, { score, baselineReliability:baselinePercent, at:event.at || new Date().toISOString(), status:event.status || (score === 1 ? 'finished' : score === 0 ? 'disconnected' : 'dnf') }].slice(-RELIABILITY_WINDOW);
   const earned = next.reduce((sum, item) => sum + clamp(finite(item.score), 0, 1), 0);
-  const reliability = Math.round((9 + earned) / (10 + next.length) * 100);
+  const reliability = Math.round((baseline + earned) / (10 + next.length) * 100);
   return { history:next, reliability, starts:next.length, completed:next.filter(item => finite(item.score) >= 1).length };
 }
 
@@ -291,14 +300,22 @@ function nextLicense(current, safety, mpr = 0, options = {}) {
     if (finite(safety) >= rule.safety && nextMpr >= rule.mpr) {
       index += 1; nextMpr = 0; reason = 'promoted';
     } else if (finite(safety) < 2) reason = 'at-risk';
+  } else {
+    // S is the highest license: MPR only exists to unlock the next tier.
+    nextMpr = Math.max(0, Math.round(finite(mpr)));
   }
   const nextRule = LICENSE_RULES[LICENSE_ORDER[index]] || null;
   return { license:LICENSE_ORDER[index], mpr:nextMpr, reason, targetSafety:nextRule?.safety ?? null, targetMpr:nextRule?.mpr ?? null };
 }
 
+function normalizedLicense(value) {
+  const license = String(value || 'R').trim().toUpperCase();
+  return LICENSE_ORDER.includes(license) ? license : 'R';
+}
+
 function seedSafetyProfile(oldSafety = 2.5, license = 'R', mpr = 0) {
   return {
-    rating:round(clamp(finite(oldSafety, 2.5), 0, 4.99), 2), license:String(license || 'R').toUpperCase(),
+    rating:round(clamp(finite(oldSafety, 2.5), 0, 4.99), 2), license:normalizedLicense(license),
     mpr:Math.max(0, Math.round(finite(mpr))), history:seedSafetyHistory(oldSafety), cpi:round(cpiFromSafety(oldSafety), 2),
     badge:'Rookie', starts:0, version:VERSION
   };
@@ -312,14 +329,14 @@ function normalizeSafetyProfile(raw, oldSafety = 2.5, license = 'R', mpr = 0) {
   const cpi = totals.incidents > 0 ? totals.corners / totals.incidents : Math.max(300, totals.corners);
   const rating = raw.version === VERSION ? safetyFromCpi(cpi) : legacyRating;
   return {
-    rating, license:String(raw.license || license || 'R').toUpperCase(), mpr:Math.max(0,Math.round(finite(raw.mpr,mpr))),
+    rating, license:normalizedLicense(raw.license || license || 'R'), mpr:Math.max(0,Math.round(finite(raw.mpr,mpr))),
     history, cpi:round(cpi,2), badge:String(raw.badge || 'Rookie'), starts:Math.max(0,Math.round(finite(raw.starts))), version:VERSION
   };
 }
 
 function championshipPoints(position, status, strengthOfField, fieldSize) {
   const base = [25,18,15,12,10,8,6,4,2,1][Math.max(0, Math.round(finite(position, 999)) - 1)] || 0;
-  if (!base || ['dnf','dsq','dns'].includes(String(status || '').toLowerCase())) return 0;
+  if (!base || ['dnf','dsq','dns','server_failure'].includes(String(status || '').toLowerCase())) return 0;
   const strengthFactor = clamp(finite(strengthOfField, 1600) / 1600, 0.75, 1.35);
   const fieldFactor = clamp(Math.sqrt(Math.max(1, finite(fieldSize)) / 10), 0.6, 1.4);
   return Math.max(1, Math.round(base * strengthFactor * fieldFactor));
@@ -331,5 +348,5 @@ module.exports = {
   clamp, disciplineFor, ordinal, displayRating, seedSkillProfile, normalizeSkillProfile, primaryDiscipline,
   winProbability, updateSkillGrid, safetyFromCpi, cpiFromSafety, seedSafetyHistory, trimCornerWindow,
   sessionMultiplier, updateSafety, incidentPoints, updateReliability, contactBadge, nextLicense,
-  seedSafetyProfile, normalizeSafetyProfile, championshipPoints
+  seedSafetyProfile, normalizeSafetyProfile, normalizedLicense, championshipPoints
 };

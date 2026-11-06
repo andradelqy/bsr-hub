@@ -9,7 +9,8 @@ const RatingEngine = require('./rating-engine');
 const RatingPolicy = require('./rating-policy');
 const RatingPublication = require('./rating-publication')(Parse);
 const STEAM_OPENID_ENDPOINT = 'https://steamcommunity.com/openid/login';
-const DEFAULT_STEAM_CALLBACK = 'https://bsrracing2.netlify.app/steam_callback.html';
+const DEFAULT_STEAM_CALLBACK = 'https://brasilsimracing.com/steam_callback.html';
+const LEGACY_STEAM_CALLBACKS = ['https://bsrracing2.netlify.app/steam_callback.html'];
 
 async function requireUser(request) {
   if (!request.user) throw new Parse.Error(Parse.Error.SESSION_MISSING, 'Sessão obrigatória.');
@@ -84,14 +85,24 @@ function hashToken(value) {
 function isAllowedSteamReturnTo(value) {
   let target;
   try { target = new URL(value); } catch (_) { return false; }
-  const configured = process.env.STEAM_ALLOWED_CALLBACKS || DEFAULT_STEAM_CALLBACK;
-  const allowed = configured.split(',').map(item => item.trim()).filter(Boolean).some(item => {
+
+  // O callback oficial permanece permitido mesmo se existir uma variável de
+  // ambiente antiga/incompleta. STEAM_ALLOWED_CALLBACKS só acrescenta domínios
+  // exatos; nunca substitui o endereço oficial nem cria curingas.
+  const configured = String(process.env.STEAM_ALLOWED_CALLBACKS || '')
+    .split(',').map(item => item.trim()).filter(Boolean);
+  const candidates = [DEFAULT_STEAM_CALLBACK, ...LEGACY_STEAM_CALLBACKS, ...configured];
+  const allowed = candidates.some(item => {
     try {
       const candidate = new URL(item);
-      return target.protocol === candidate.protocol && target.host === candidate.host && target.pathname === candidate.pathname;
+      return target.protocol === candidate.protocol
+        && target.host === candidate.host
+        && target.pathname === candidate.pathname;
     } catch (_) { return false; }
   });
-  const loopback = target.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(target.hostname) && ['/steam/callback', '/steam_callback.html'].includes(target.pathname);
+  const loopback = target.protocol === 'http:'
+    && ['127.0.0.1', 'localhost'].includes(target.hostname)
+    && ['/steam/callback', '/steam_callback.html'].includes(target.pathname);
   return allowed || loopback;
 }
 
@@ -721,6 +732,103 @@ Parse.Cloud.define('verifyAdminSession', async request => {
   return { isAdmin: true, objectId: user.id, username: user.getUsername() };
 });
 
+// Regista blocos de telemetria/replay enviados pelo cliente BSR autenticado.
+// Os ficheiros são carregados em blocos pequenos para respeitar o limite de upload do Parse.
+Parse.Cloud.define('registerRaceTelemetryEvidence', async request => {
+  const user = await requireHubUser(request);
+  const value = request.params && typeof request.params === 'object' ? request.params : {};
+  const kind = cleanText(value.kind, 20).toLowerCase();
+  const sessionId = cleanText(value.sessionId, 80);
+  const fileName = cleanText(value.fileName, 180);
+  const fileUrl = cleanText(value.fileUrl, 1500);
+  const originalName = cleanText(value.originalName, 180);
+  const chunkIndex = Number(value.chunkIndex);
+  const chunkCount = Number(value.chunkCount);
+  const totalBytes = Number(value.totalBytes);
+  const chunkBytes = Number(value.chunkBytes);
+  const sha256 = cleanText(value.sha256, 64).toLowerCase();
+  const raceId = cleanText(value.raceId, 40);
+  const steamId = cleanText(value.steamId, 20);
+  if (!['telemetry','replay'].includes(kind) || !/^[a-z0-9_-]{8,80}$/i.test(sessionId)) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Identificador ou tipo de evidência inválido.');
+  }
+  if (!fileName || !originalName || !/^https:\/\/parsefiles\.back4app\.com\//i.test(fileUrl)) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Arquivo de evidência inválido.');
+  }
+  if (!Number.isInteger(chunkIndex) || !Number.isInteger(chunkCount) || chunkCount < 1 || chunkCount > 1000 || chunkIndex < 0 || chunkIndex >= chunkCount) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Índice de bloco inválido.');
+  }
+  if (!Number.isSafeInteger(totalBytes) || totalBytes < 1 || totalBytes > 2 * 1024 * 1024 * 1024 || !Number.isSafeInteger(chunkBytes) || chunkBytes < 1 || chunkBytes > 8 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Tamanho ou hash da evidência inválido.');
+  }
+  const ownerSteamId = cleanText(user.get('steamId'), 20);
+  if (!ownerSteamId || (steamId && steamId !== ownerSteamId)) {
+    throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, 'A telemetria não corresponde à conta Steam autenticada.');
+  }
+  if (raceId && !/^[A-Za-z0-9_-]{1,40}$/.test(raceId)) throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Corrida vinculada inválida.');
+
+  const duplicate = await new Parse.Query('TelemetryEvidence')
+    .equalTo('owner', user).equalTo('sessionId', sessionId)
+    .equalTo('kind', kind).equalTo('chunkIndex', chunkIndex)
+    .equalTo('sha256', sha256).first({ useMasterKey:true });
+  if (duplicate) return { objectId:duplicate.id, duplicate:true };
+
+  const evidence = new Parse.Object('TelemetryEvidence');
+  evidence.set({
+    owner:user, steamId:ownerSteamId, kind, sessionId, raceId:raceId || null,
+    driverName:cleanText(value.driverName, 100), track:cleanText(value.track, 120),
+    carModel:cleanText(value.carModel, 120), serverHost:cleanText(value.serverHost, 253),
+    serverPort:Number(value.serverPort || 0), fileName, fileUrl, originalName,
+    chunkIndex, chunkCount, totalBytes, chunkBytes, sha256,
+    uploadedAt:new Date(), reviewStatus:'PENDING'
+  });
+  const acl = new Parse.ACL(user);
+  acl.setReadAccess(user, true);
+  acl.setWriteAccess(user, false);
+  acl.setRoleReadAccess('admin', true);
+  evidence.setACL(acl);
+  await evidence.save(null, { useMasterKey:true });
+  return { objectId:evidence.id, duplicate:false };
+});
+
+Parse.Cloud.define('getMyTelemetryEvidenceSessions', async request => {
+  const user = await requireHubUser(request);
+  const query = new Parse.Query('TelemetryEvidence');
+  query.equalTo('owner', user);
+  query.equalTo('kind', 'replay');
+  query.descending('uploadedAt');
+  query.limit(1000);
+  const records = await query.find({ useMasterKey:true });
+  const groups = new Map();
+  for (const item of records) {
+    const sessionId = cleanText(item.get('sessionId'), 80);
+    const originalName = cleanText(item.get('originalName'), 180);
+    if (!sessionId || !originalName) continue;
+    const key = sessionId + '|' + originalName;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return [...groups.values()].map(items => {
+    const ordered = items.sort((a,b) => Number(a.get('chunkIndex') || 0) - Number(b.get('chunkIndex') || 0));
+    const first = ordered[0];
+    const expected = Number(first.get('chunkCount') || 0);
+    const chunks = ordered.map(item => ({
+      objectId:item.id, index:Number(item.get('chunkIndex') || 0),
+      url:item.get('fileUrl'), sha256:item.get('sha256'),
+      bytes:Number(item.get('chunkBytes') || 0)
+    }));
+    const complete = expected > 0 && ordered.length === expected && chunks.every((chunk,index) => chunk.index === index);
+    return {
+      sessionId:first.get('sessionId'), raceId:first.get('raceId') || '',
+      track:first.get('track') || '', carModel:first.get('carModel') || '',
+      driverName:first.get('driverName') || '', originalName:first.get('originalName'),
+      uploadedAt:first.get('uploadedAt') || first.createdAt,
+      totalBytes:Number(first.get('totalBytes') || 0), chunkCount:expected,
+      complete, chunks:complete ? chunks : []
+    };
+  }).sort((a,b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime());
+});
+
 const CONTENT_TYPES = new Set(['car', 'track', 'skin', 'app', 'extension', 'showroom']);
 
 function contentPackageDTO(item, includeAdmin = false) {
@@ -1035,19 +1143,108 @@ Parse.Cloud.define('cancelRaceReservation', async request => {
 Parse.Cloud.define('submitRaceReport', async request => {
   const user = await requireHubUser(request);
   const raceId = cleanText(request.params.raceId, 40);
-  const againstSteamId = cleanText(request.params.againstSteamId, 30);
+  const legacyIdentifier = cleanText(request.params.againstSteamId, 120);
+  const requestedName = cleanText(request.params.reportedPilotName, 120);
+  const suppliedSteamId = cleanText(request.params.reportedSteamId, 30);
+  const legacySteamMatch = legacyIdentifier.match(/\d{17}/);
+  const againstSteamId = suppliedSteamId || (/^\d{17}$/.test(legacyIdentifier) ? legacyIdentifier : legacySteamMatch?.[0] || '');
+  const reportedPilotName = /^\d{17}$/.test(requestedName) ? '' : requestedName;
+  const targetName = reportedPilotName || (againstSteamId ? '' : legacyIdentifier);
   const description = cleanText(request.params.description, 2000);
   const videoUrl = cleanText(request.params.videoUrl, 1000);
-  if (!raceId || !againstSteamId || description.length < 20) {
-    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Informe corrida, piloto e uma descrição detalhada.');
+  const evidenceSessionId = cleanText(request.params.evidenceSessionId, 80);
+  if (!raceId || (!targetName && !againstSteamId) || description.length < 20) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Informe a corrida, o nome/apelido ou SteamID do piloto e uma descrição detalhada.');
   }
-  if (againstSteamId === user.get('steamId')) throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Você não pode protestar contra si mesmo.');
-  const fromDriver = user.get('driver') || await new Parse.Query('Driver').equalTo('steamGUID', user.get('steamId')).first({ useMasterKey: true });
-  const againstDriver = await new Parse.Query('Driver').equalTo('steamGUID', againstSteamId).first({ useMasterKey: true });
-  if (!fromDriver || !againstDriver) throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Piloto não encontrado.');
+  if (againstSteamId && !/^\d{17}$/.test(againstSteamId)) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'O SteamID64 informado deve conter exatamente 17 dígitos.');
+  }
+
+  const userSteamId = cleanText(user.get('steamId'), 30);
+  if (againstSteamId && againstSteamId === userSteamId) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Você não pode protestar contra si mesmo.');
+  }
+
+  const activeDriver = driver => !driver.get('hiddenFromPublic') && !driver.get('mergedInto');
+  const driverSteamIds = driver => [driver.get('steamGUID'), driver.get('steamId')].map(value => cleanText(value, 30)).filter(Boolean);
+  const preferCanonical = drivers => [...drivers].sort((a, b) =>
+    Number(b.get('identityVersion') === 2) - Number(a.get('identityVersion') === 2) ||
+    Number(Boolean(b.get('steamGUID'))) - Number(Boolean(a.get('steamGUID')))
+  );
+
+  const ownCandidates = userSteamId ? await findSteamDrivers(userSteamId, user) : [];
+  const fromDriver = preferCanonical(ownCandidates.filter(driver => activeDriver(driver) && driverSteamIds(driver).includes(userSteamId)))[0] || null;
+  if (!fromDriver) {
+    throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Seu perfil de piloto não foi localizado. Entre novamente com a Steam para sincronizar sua identidade.');
+  }
+
+  const nameKey = value => cleanText(value, 120).normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+  let targetCandidates = [];
+  if (againstSteamId) {
+    targetCandidates = await findSteamDrivers(againstSteamId);
+    targetCandidates = targetCandidates.filter(driver => activeDriver(driver) && driverSteamIds(driver).includes(againstSteamId));
+  } else if (targetName) {
+    // A correspondência serve apenas para anexar um perfil conhecido ao report.
+    // Não encontrar cadastro, ou encontrar nomes ambíguos, nunca bloqueia o envio:
+    // o texto livre informado pelo denunciante é preservado para análise manual.
+    const allDrivers = await new Parse.Query('Driver').limit(1000).find({ useMasterKey:true });
+    const wantedName = nameKey(targetName);
+    targetCandidates = allDrivers.filter(driver => activeDriver(driver) &&
+      ['name', 'steamName', 'customDisplayName'].some(field => nameKey(driver.get(field)) === wantedName));
+  }
+  const uniqueTargets = [...new Map(targetCandidates.map(driver => [driver.id, driver])).values()];
+  const againstDriver = uniqueTargets.length === 1 || (againstSteamId && uniqueTargets.length > 1)
+    ? preferCanonical(uniqueTargets)[0]
+    : null;
+  const againstIdentity = againstDriver ? driverSteamIds(againstDriver) : [];
+  if (againstDriver && (againstDriver.id === fromDriver.id || (userSteamId && againstIdentity.includes(userSteamId)))) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Você não pode protestar contra si mesmo.');
+  }
+  if (!againstSteamId && targetName) {
+    const ownNames = ['name', 'steamName', 'customDisplayName']
+      .map(field => nameKey(fromDriver.get(field))).filter(Boolean);
+    if (ownNames.includes(nameKey(targetName))) {
+      throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'Você não pode protestar contra si mesmo.');
+    }
+  }
+
   await new Parse.Query('Races').get(raceId, { useMasterKey: true });
+  let replayEvidence = null;
+  if (evidenceSessionId) {
+    const evidenceQuery = new Parse.Query('TelemetryEvidence');
+    evidenceQuery.equalTo('owner', user);
+    evidenceQuery.equalTo('sessionId', evidenceSessionId);
+    evidenceQuery.equalTo('kind', 'replay');
+    evidenceQuery.ascending('chunkIndex');
+    evidenceQuery.limit(1000);
+    const evidenceItems = await evidenceQuery.find({ useMasterKey:true });
+    if (!evidenceItems.length) throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Replay automático não encontrado na sua conta.');
+    const firstEvidence = evidenceItems[0];
+    const expectedChunks = Number(firstEvidence.get('chunkCount') || 0);
+    const evidenceRaceId = cleanText(firstEvidence.get('raceId'), 40);
+    const chunkManifest = evidenceItems.map(item => ({
+      index:Number(item.get('chunkIndex') || 0), url:item.get('fileUrl'),
+      sha256:item.get('sha256'), bytes:Number(item.get('chunkBytes') || 0)
+    }));
+    const complete = expectedChunks > 0 && evidenceItems.length === expectedChunks && chunkManifest.every((item,index) => item.index === index && /^https:\/\//i.test(String(item.url || '')));
+    if (!complete) throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'O upload do replay ainda não foi concluído. Aguarde a sincronização e tente novamente.');
+    if (evidenceRaceId && evidenceRaceId !== raceId) throw new Parse.Error(Parse.Error.VALIDATION_ERROR, 'O replay selecionado pertence a outra corrida.');
+    replayEvidence = {
+      sessionId:evidenceSessionId, originalName:firstEvidence.get('originalName'),
+      totalBytes:Number(firstEvidence.get('totalBytes') || 0), chunkCount:expectedChunks,
+      track:firstEvidence.get('track') || '', carModel:firstEvidence.get('carModel') || '',
+      uploadedAt:firstEvidence.get('uploadedAt') || firstEvidence.createdAt,
+      chunks:chunkManifest
+    };
+  }
   const report = new Parse.Object('Reports');
-  report.set({ fromDriver, againstDriver, raceId, description, videoUrl, status: 'pending', submittedAt: new Date(), submittedBy: user });
+  const reportFields = {
+    fromDriver, raceId, reportedPilotName:targetName, reportedSteamId:againstSteamId,
+    description, videoUrl, replayEvidence, status:'pending', submittedAt:new Date(), submittedBy:user
+  };
+  if (againstDriver) reportFields.againstDriver = againstDriver;
+  report.set(reportFields);
   const acl = new Parse.ACL(user); acl.setRoleReadAccess('admin', true); acl.setRoleWriteAccess('admin', true); report.setACL(acl);
   await report.save(null, { useMasterKey: true });
   return { objectId: report.id, status: 'pending' };
@@ -1144,11 +1341,14 @@ function normalizeImportPayload(raw) {
       offTracks:importNumber(rawDriver.offTracks, 0, 10000), lossOfControl:importNumber(rawDriver.lossOfControl, 0, 10000),
       lightContacts:importNumber(rawDriver.lightContacts, 0, 10000), heavyContacts:importNumber(rawDriver.heavyContacts, 0, 10000),
       carModel: cleanText(rawDriver.carModel, 160),
-      carClass: cleanText(rawDriver.carClass || 'Unknown', 80), bestLapMs: importNumber(rawDriver.bestLapMs), totalTimeMs: importNumber(rawDriver.totalTimeMs),
+      carClass: cleanText(rawDriver.carClass || 'Unknown', 80),
+      carClassSource:cleanText(rawDriver.carClassSource || 'manual-review', 40),
+      carClassConfidence:cleanText(rawDriver.carClassConfidence || 'manual', 20),
+      bestLapMs: importNumber(rawDriver.bestLapMs), totalTimeMs: importNumber(rawDriver.totalTimeMs),
       discipline:RatingEngine.disciplineFor(rawDriver.carClass, rawDriver.discipline),
       isDNF: Boolean(rawDriver.isDNF), isRageQuit: Boolean(rawDriver.isRageQuit), disconnected:Boolean(rawDriver.disconnected || rawDriver.isRageQuit), isDSQ: Boolean(rawDriver.isDSQ),
       didNotStart:Boolean(rawDriver.didNotStart), serverFailure:Boolean(rawDriver.serverFailure),
-      incidentEvidence:cleanText(rawDriver.incidentEvidence || 'reviewed', 20),
+      incidentEvidence:cleanText(rawDriver.incidentEvidence || (rawDriver.incidentPoints !== undefined && rawDriver.incidentPoints !== null && rawDriver.incidentPoints !== '' || rawDriver.incidents !== undefined && rawDriver.incidents !== null && rawDriver.incidents !== '' ? 'reported' : 'missing'), 20),
       penaltySeconds: importNumber(rawDriver.penaltySeconds, 0, 3600), penaltyIncidents: Math.round(importNumber(rawDriver.penaltyIncidents, 0, 1000)),
       penaltyReason: cleanText(rawDriver.penaltyReason, 500)
     };
@@ -1165,6 +1365,7 @@ function normalizeImportPayload(raw) {
     raceId, sessionType, track, sessionDate,
     official:payload.official !== false,
     distanceValid:payload.distanceValid !== false,
+    serverFailure:Boolean(payload.serverFailure),
     minimumStarters:Math.round(importNumber(payload.minimumStarters || 4, 2, 100)),
     minimumClassStarters:Math.round(importNumber(payload.minimumClassStarters || 3, 2, 100)),
     heat:cleanText(payload.heat || '1', 32), sourceHash:cleanText(payload.sourceHash, 64),
@@ -1174,7 +1375,7 @@ function normalizeImportPayload(raw) {
 }
 
 function resultStatus(item) {
-  return item.didNotStart ? 'dns' : item.isDSQ ? 'dsq' : item.isDNF ? 'dnf' : 'finished';
+  return item.serverFailure ? 'server_failure' : item.didNotStart ? 'dns' : item.isDSQ ? 'dsq' : item.isDNF ? 'dnf' : 'finished';
 }
 
 function compareClassification(a, b) {
@@ -1255,26 +1456,32 @@ async function calculateRaceImport(payload) {
   const rows = [];
   groups.forEach(group => {
     const sorted = [...group].sort((a,b) => a.officialPosition - b.officialPosition);
-    const starters = sorted.filter(entry => !entry.item.didNotStart);
-    const rated = payload.official && payload.distanceValid && !payload.drivers.some(driver => driver.serverFailure) &&
-      payload.drivers.filter(driver => !driver.didNotStart).length >= payload.minimumStarters && starters.length >= payload.minimumClassStarters;
-    const ratingReason = !payload.official ? 'Sessão não oficial' : !payload.distanceValid ? 'Distância mínima não atingida' : payload.drivers.length < payload.minimumStarters ? `Grid geral abaixo de ${payload.minimumStarters} pilotos` : sorted.length < payload.minimumClassStarters ? `Classe abaixo de ${payload.minimumClassStarters} pilotos` : 'Válida para rating';
+    const starters = sorted.filter(entry => !entry.item.didNotStart && !entry.item.serverFailure);
+    const validGridSize = payload.drivers.filter(driver => !driver.didNotStart && !driver.serverFailure).length;
+    const rated = payload.official && payload.distanceValid && !payload.serverFailure &&
+      validGridSize >= payload.minimumStarters && starters.length >= payload.minimumClassStarters;
+    const ratingReason = !payload.official ? 'Sessão não oficial' : payload.serverFailure ? 'Falha coletiva do servidor' : !payload.distanceValid ? 'Distância mínima não atingida' : validGridSize < payload.minimumStarters ? `Grid geral abaixo de ${payload.minimumStarters} pilotos válidos` : starters.length < payload.minimumClassStarters ? `Classe abaixo de ${payload.minimumClassStarters} pilotos válidos` : 'Válida para rating';
     const skillRows = starters.map(entry => {
       const oldIRating = Math.round(importNumber(entry.driver.get('irating') || 1600, 100, 10000));
       const profiles = entry.driver.get('skillRatings') || {};
       const discipline = entry.item.discipline || RatingEngine.disciplineFor(entry.item.carClass);
-      return { entry, discipline, legacyRating:oldIRating, profile:profiles[discipline], rank:entry.classPosition };
+      const primaryDiscipline = entry.driver.get('primaryDiscipline') || 'road';
+      const legacyRating = profiles[discipline] ? Number(profiles[discipline].display || oldIRating) : discipline === primaryDiscipline ? oldIRating : 1600;
+      return { entry, discipline, legacyRating, profile:profiles[discipline], rank:entry.classPosition };
     });
     const updatedSkills = rated ? RatingEngine.updateSkillGrid(skillRows, { eventAt:payload.sessionDate.toISOString() }) : skillRows.map(item => {
       const profile = RatingEngine.normalizeSkillProfile(item.profile, item.legacyRating);
       return { ...item, before:profile, after:profile, delta:0, expectedFinish:item.rank, performance:0 };
     });
-    sorted.filter(entry => entry.item.didNotStart).forEach(entry => {
+    sorted.filter(entry => entry.item.didNotStart || entry.item.serverFailure).forEach(entry => {
       const discipline = entry.item.discipline || RatingEngine.disciplineFor(entry.item.carClass);
-      const profile = RatingEngine.normalizeSkillProfile((entry.driver.get('skillRatings') || {})[discipline], entry.driver.get('irating') || 1600);
+      const profiles = entry.driver.get('skillRatings') || {};
+      const primaryDiscipline = entry.driver.get('primaryDiscipline') || 'road';
+      const legacyRating = profiles[discipline] ? Number(profiles[discipline].display || 1600) : discipline === primaryDiscipline ? Number(entry.driver.get('irating') || 1600) : 1600;
+      const profile = RatingEngine.normalizeSkillProfile(profiles[discipline], legacyRating);
       updatedSkills.push({ entry, discipline, before:profile, after:profile, delta:0, expectedFinish:0, performance:0 });
     });
-    const strengthOfField = Math.round(updatedSkills.filter(item => !item.entry.item.didNotStart).reduce((sum, item) => sum + item.before.display, 0) / Math.max(1,starters.length));
+    const strengthOfField = Math.round(updatedSkills.filter(item => !item.entry.item.didNotStart && !item.entry.item.serverFailure).reduce((sum, item) => sum + item.before.display, 0) / Math.max(1,starters.length));
     const classWinnerLaps = Math.max(0, ...sorted.map(item => item.item.lapsCompleted));
     updatedSkills.forEach(skill => {
       const entry = skill.entry;
@@ -1282,29 +1489,29 @@ async function calculateRaceImport(payload) {
       const newIRating = skill.after.display;
       const races = Math.round(importNumber(entry.driver.get('totalRaces')));
       const safetyRatings = entry.driver.get('safetyRatings') || {};
+      const primaryDiscipline = entry.driver.get('primaryDiscipline') || 'road';
+      const isPrimaryDiscipline = skill.discipline === primaryDiscipline;
       const rawLegacySafety = entry.driver.get('safetyRating');
-      const legacySafety = rawLegacySafety === undefined || rawLegacySafety === null || rawLegacySafety === ''
-        ? 2.5
-        : importNumber(rawLegacySafety, 0, 4.99);
-      const legacyLicense = entry.driver.get('licenseClass') || 'R';
-      const legacyMpr = entry.driver.get('licenseMPR');
+      const legacySafety = isPrimaryDiscipline && rawLegacySafety !== undefined && rawLegacySafety !== null && rawLegacySafety !== ''
+        ? importNumber(rawLegacySafety, 0, 4.99) : 2.5;
+      const legacyLicense = isPrimaryDiscipline ? (entry.driver.get('licenseClass') || 'R') : 'R';
+      const legacyMpr = isPrimaryDiscipline ? entry.driver.get('licenseMPR') : 0;
       const safetyBefore = RatingEngine.normalizeSafetyProfile(safetyRatings[skill.discipline], legacySafety, legacyLicense, legacyMpr);
       const oldSafetyRating = safetyBefore.rating;
       const previousCorners = importNumber(entry.driver.get('totalCorners'));
       const previousIncidents = importNumber(entry.driver.get('totalIncidents'));
       const raceCorners = entry.item.cornersCompleted || entry.item.lapsCompleted * payload.cornersPerLap;
       const raceIncidents = RatingEngine.incidentPoints({ ...entry.item, stewardIncidentPoints:entry.item.penaltyIncidents });
-      const totalCorners = previousCorners + raceCorners;
-      const totalIncidents = previousIncidents + raceIncidents;
-      const safetyEligible = payload.official && payload.distanceValid && !entry.item.didNotStart &&
-        !payload.drivers.some(driver => driver.serverFailure) &&
+      const safetyEligible = payload.official && payload.distanceValid && !payload.serverFailure && !entry.item.didNotStart && !entry.item.serverFailure &&
         entry.item.incidentEvidence !== 'missing' && (raceCorners > 0 || raceIncidents > 0);
+      const totalCorners = previousCorners + (safetyEligible ? raceCorners : 0);
+      const totalIncidents = previousIncidents + (safetyEligible ? raceIncidents : 0);
       const safety = safetyEligible
         ? RatingEngine.updateSafety(safetyBefore.history, oldSafetyRating, { corners:raceCorners, incidentPoints:raceIncidents, sessionType:payload.sessionType, at:payload.sessionDate.toISOString(), source:payload.importKey })
         : { history:safetyBefore.history, oldSafety:oldSafetyRating, safety:oldSafetyRating, delta:0, cpi:safetyBefore.cpi, windowCorners:0, windowIncidents:0, multiplier:0 };
       const reliability = payload.official
-        ? RatingEngine.updateReliability(entry.driver.get('reliabilityHistory'), { dnf:entry.item.isDNF, rageQuit:entry.item.isRageQuit, disconnected:entry.item.disconnected, serverFailure:entry.item.serverFailure, didNotStart:entry.item.didNotStart, status:resultStatus(entry.item), at:payload.sessionDate.toISOString() })
-        : { history:entry.driver.get('reliabilityHistory') || [], reliability:Math.round(importNumber(entry.driver.get('reliability') || 90, 0, 100)), starts:Math.round(importNumber(entry.driver.get('reliabilityStarts'))), completed:Math.round(importNumber(entry.driver.get('reliabilityCompleted'))) };
+        ? RatingEngine.updateReliability(entry.driver.get('reliabilityHistory'), { dnf:entry.item.isDNF, rageQuit:entry.item.isRageQuit, disconnected:entry.item.disconnected, serverFailure:entry.item.serverFailure, didNotStart:entry.item.didNotStart, baselineReliability:entry.driver.get('reliability') ?? 90, status:resultStatus(entry.item), at:payload.sessionDate.toISOString() })
+        : { history:entry.driver.get('reliabilityHistory') || [], reliability:Math.round(importNumber(entry.driver.get('reliability') ?? 90, 0, 100)), starts:Math.round(importNumber(entry.driver.get('reliabilityStarts'))), completed:Math.round(importNumber(entry.driver.get('reliabilityCompleted'))) };
       const completionRatio = classWinnerLaps > 0 ? entry.item.lapsCompleted / classWinnerLaps : 1;
       const mpr = RatingPolicy.mprDecision({ policy:payload.ratingPolicy, rated, driver:entry.item, corners:raceCorners,
         incidents:raceIncidents, completion:completionRatio, license:safetyBefore.license });
@@ -1317,10 +1524,10 @@ async function calculateRaceImport(payload) {
       const contactBadge = RatingEngine.contactBadge({ cpi:safety.cpi, starts:safetyStarts, reliability:reliability.reliability });
       const safetyAfter = { rating:safety.safety, license:license.license, mpr:license.mpr, history:safety.history, cpi:safety.cpi, badge:contactBadge, starts:safetyStarts, version:RatingEngine.VERSION };
       const points = RatingEngine.championshipPoints(entry.classPosition, resultStatus(entry.item), strengthOfField, sorted.length);
-      const totalRaces = races + (payload.official && !entry.item.didNotStart ? 1 : 0);
+      const totalRaces = races + (payload.official && !entry.item.didNotStart && !entry.item.serverFailure ? 1 : 0);
       rows.push({ ...entry.item, driver:entry.driver, driverId:entry.driver.id, oldIRating, newIRating, deltaIRating:newIRating-oldIRating,
         skillBefore:skill.before, skillAfter:skill.after, expectedFinish:skill.expectedFinish, ratingPerformance:skill.performance, strengthOfField,
-        rated:rated && !entry.item.didNotStart, ratingReason:entry.item.didNotStart ? 'Não largou' : entry.item.serverFailure ? 'Falha do servidor' : ratingReason,
+        rated:rated && !entry.item.didNotStart && !entry.item.serverFailure, ratingReason:payload.serverFailure ? 'Falha coletiva do servidor' : entry.item.serverFailure ? 'Falha do servidor' : entry.item.didNotStart ? 'Não largou' : ratingReason,
         mprReasons:mpr.reasons, reliabilityReason:reliability.reason || '', countedCorners:raceCorners,
         oldSafetyRating, newSafetyRating:safety.safety, deltaSafetyRating:safety.delta, safetyHistory:safety.history, safetyCpi:safety.cpi,
         safetyBefore, safetyAfter, safetyEligible, safetyMultiplier:safety.multiplier, safetyWindowCorners:safety.windowCorners, safetyWindowIncidents:safety.windowIncidents, incidentPoints:raceIncidents,
@@ -1348,10 +1555,18 @@ Parse.Cloud.define('getRaceProcessorContext', async request => {
 });
 
 async function migrateRatingsV3Profiles(actor = 'back4app_job') {
-  const query = new Parse.Query('Driver');
-  query.ascending('objectId');
-  query.limit(1000);
-  const drivers = await query.find({ useMasterKey:true });
+  const drivers = [];
+  let afterId = '';
+  for (;;) {
+    const query = new Parse.Query('Driver');
+    query.ascending('objectId');
+    query.limit(1000);
+    if (afterId) query.greaterThan('objectId', afterId);
+    const page = await query.find({ useMasterKey:true });
+    drivers.push(...page);
+    if (page.length < 1000) break;
+    afterId = page[page.length - 1].id;
+  }
   let migrated = 0;
   drivers.forEach(driver => {
     const values = normalizedDriverValues(driver);
@@ -1384,7 +1599,7 @@ async function migrateRatingsV3Profiles(actor = 'back4app_job') {
       licenseClass:primarySafety.license,
       driverRank:primarySafety.license,
       contactBadge:primarySafety.badge,
-      reliability:Math.round(importNumber(driver.get('reliability') || 90, 0, 100)),
+      reliability:Math.round(importNumber(driver.get('reliability') ?? 90, 0, 100)),
       reliabilityHistory:driver.get('reliabilityHistory') || [],
       reliabilityStarts:Math.round(importNumber(driver.get('reliabilityStarts'))),
       reliabilityCompleted:Math.round(importNumber(driver.get('reliabilityCompleted'))),
@@ -1431,7 +1646,40 @@ async function prepareRatingPayload(raw) {
   payload.minimumStarters = payload.ratingPolicy.minimumStarters;
   payload.minimumClassStarters = payload.ratingPolicy.minimumClassStarters;
   payload.official = payload.official && payload.ratingPolicy.official;
-  if (payload.official && !/^[a-f0-9]{64}$/i.test(payload.sourceHash)) throw new Error('Reimporte o arquivo de origem para registrar seu SHA-256.');
+  payload.serverFailure = Boolean(payload.serverFailure);
+  if (payload.serverFailure) payload.drivers.forEach(driver => { driver.serverFailure = true; });
+  if (payload.official) {
+    const unknownClasses = payload.drivers.filter(driver => !driver.carClass || /^unknown$/i.test(driver.carClass));
+    if (unknownClasses.length) {
+      const names = unknownClasses.slice(0, 8).map(driver => driver.name + (driver.carModel ? ' (' + driver.carModel + ')' : ''));
+      throw new Parse.Error(Parse.Error.VALIDATION_ERROR,
+        'Categoria de carro não identificada para: ' + names.join(', ') +
+        (unknownClasses.length > 8 ? '…' : '') +
+        '. Instale/atualize os mods no Assetto Corsa para ler ui_car.json ou revise a categoria antes de publicar.');
+    }
+  }
+  // Launchers atuais enviam o SHA-256 do arquivo bruto. Alguns launchers
+  // distribuídos antes dessa proteção ainda enviam a classificação sem hash.
+  // Não bloqueamos uma apuração oficial por isso: criamos no servidor um
+  // fingerprint determinístico de todos os dados que serão avaliados. Assim,
+  // a auditoria e a barreira contra duplicidade continuam ativas, sem fingir
+  // que esse valor é o hash binário do JSON original.
+  if (payload.official && !/^[a-f0-9]{64}$/i.test(payload.sourceHash)) {
+    payload.sourceHash = RatingPolicy.hash({
+      format:'bsr-normalized-race-import-v1',
+      raceId:payload.raceId,
+      sessionType:payload.sessionType,
+      heat:payload.heat,
+      sessionDate:payload.sessionDate.toISOString(),
+      track:payload.track,
+      cornersPerLap:payload.cornersPerLap,
+      distanceValid:payload.distanceValid,
+      drivers:payload.drivers
+    });
+    payload.sourceHashMode = 'normalized-server';
+  } else {
+    payload.sourceHashMode = 'file-client';
+  }
   payload.sessionIdentity = RatingPolicy.sessionIdentity(payload);
   payload.fieldFingerprint = RatingPolicy.hash(payload.drivers.map(driver => driver.steamGUID).sort());
   const previous = await new Parse.Query('RaceImports').equalTo('sessionIdentity',payload.sessionIdentity).descending('revision').first({ useMasterKey:true });
@@ -1524,10 +1772,10 @@ function applyRatingResultToDriver(result) {
   if (safetyAfter) safetyRatings[discipline] = safetyAfter;
   const previousPrimary = driver.get('primaryDiscipline') || discipline;
   const primaryDiscipline = RatingEngine.primaryDiscipline(skillRatings, previousPrimary);
-  const primarySkill = RatingEngine.normalizeSkillProfile(skillRatings[primaryDiscipline], result.get('newIRating') || driver.get('irating') || 1600);
+  const primarySkill = RatingEngine.normalizeSkillProfile(skillRatings[primaryDiscipline], result.get('newIRating') ?? driver.get('irating') ?? 1600);
   const primarySafety = RatingEngine.normalizeSafetyProfile(
     safetyRatings[primaryDiscipline],
-    primaryDiscipline === discipline ? result.get('newSafetyRating') : (driver.get('safetyRating') || 2.5),
+    primaryDiscipline === discipline ? (result.get('newSafetyRating') ?? driver.get('safetyRating') ?? 2.5) : (driver.get('safetyRating') ?? 2.5),
     primaryDiscipline === discipline ? result.get('newLicense') : (driver.get('licenseClass') || 'R'),
     primaryDiscipline === discipline ? result.get('licenseMPR') : driver.get('licenseMPR')
   );
@@ -1648,15 +1896,15 @@ Parse.Cloud.define('commitRaceImport', async request => {
         championshipId:String(race.get('championshipId') || 'geral'), officialSession:payload.official, ratingEligible:row.rated, ratingReason:row.ratingReason,
         sessionDate:payload.sessionDate, track:payload.track, driver:row.driver, driverName:row.name, steamGUID:row.steamGUID, finishPosition:row.finishPosition,
         officialPosition:row.officialPosition, classPosition:row.classPosition, lapsCompleted:row.lapsCompleted, cornersCompleted:row.cornersCompleted,
-        incidents:row.incidentPoints, incidentPoints:row.incidentPoints, carModel:row.carModel, carClass:row.carClass, discipline:row.discipline, bestLapMs:row.bestLapMs, totalTimeMs:row.totalTimeMs,
-        isDNF:row.isDNF, isRageQuit:row.isRageQuit, disconnected:row.disconnected, isDSQ:row.isDSQ, status:resultStatus(row), classificationStatus:'pending',
+        incidents:row.incidentPoints, incidentPoints:row.incidentPoints, carModel:row.carModel, carClass:row.carClass, carClassSource:row.carClassSource, carClassConfidence:row.carClassConfidence, discipline:row.discipline, bestLapMs:row.bestLapMs, totalTimeMs:row.totalTimeMs,
+        isDNF:row.isDNF, isRageQuit:row.isRageQuit, disconnected:row.disconnected, isDSQ:row.isDSQ, serverFailure:row.serverFailure, status:resultStatus(row), classificationStatus:'pending',
         penaltySeconds:row.penaltySeconds, penaltyReason:row.penaltyReason, oldIRating:row.oldIRating, newIRating:row.newIRating,
         deltaIRating:row.deltaIRating, expectedFinish:row.expectedFinish, strengthOfField:row.strengthOfField,
         ratingPerformance:row.ratingPerformance, skillBefore:row.skillBefore, skillAfter:row.skillAfter, ratingVersion:row.ratingVersion,
         oldSafetyRating:row.oldSafetyRating, newSafetyRating:row.newSafetyRating, deltaSafetyRating:row.deltaSafetyRating, safetyCpi:row.safetyCpi,
         safetyEligible:row.safetyEligible, safetyMultiplier:row.safetyMultiplier, safetyWindowCorners:row.safetyWindowCorners, safetyWindowIncidents:row.safetyWindowIncidents,
         safetyProfileBefore:row.safetyBefore, safetyProfileAfter:row.safetyAfter, safetyHistoryAfter:row.safetyHistory,
-        oldReliability:row.driver.get('reliability') || 90, newReliability:row.reliability, reliabilityStarts:row.reliabilityStarts,
+        oldReliability:row.driver.get('reliability') ?? 90, newReliability:row.reliability, reliabilityStarts:row.reliabilityStarts,
         reliabilityCompleted:row.reliabilityCompleted, reliabilityHistoryAfter:row.reliabilityHistory,
         contactBadge:row.contactBadge, safetyStarts:row.safetyStarts, oldLicense:row.oldLicense, newLicense:row.newLicense, licenseMPR:row.licenseMPR, licenseChange:row.licenseChange,
         licenseTargetSafety:row.licenseTargetSafety, licenseTargetMpr:row.licenseTargetMpr, mprEligible:row.mprEligible, completionRatio:row.completionRatio,
@@ -1826,7 +2074,7 @@ Parse.Cloud.beforeSave(Parse.User, request => {
   }
 });
 
-for (const className of ['Driver', 'CarReservations', 'RaceResult', 'ChampionshipStandings', 'Notifications', 'Reports', 'AuditLog', 'AuthChallenge', 'RaceImports', 'RatingLedger', 'ContentPackage', 'RaceConnection', 'ServerProfile', 'HubAccessPolicy', 'HubAccessGrant']) {
+for (const className of ['Driver', 'CarReservations', 'RaceResult', 'ChampionshipStandings', 'Notifications', 'Reports', 'AuditLog', 'AuthChallenge', 'RaceImports', 'RatingLedger', 'ContentPackage', 'RaceConnection', 'ServerProfile', 'HubAccessPolicy', 'HubAccessGrant', 'TelemetryEvidence']) {
   Parse.Cloud.beforeFind(className, requireAdminAccess);
 }
 
@@ -1834,7 +2082,7 @@ for (const className of ['Races', 'Championships', 'Categories', 'Dependencies']
   Parse.Cloud.beforeFind(className, requireHubReadAccess);
 }
 
-for (const className of ['Races', 'Championships', 'Categories', 'Dependencies', 'Driver', 'CarReservations', 'RaceResult', 'ChampionshipStandings', 'Notifications', 'Reports', 'AuditLog', 'AuthChallenge', 'RaceImports', 'ContentPackage', 'RaceConnection', 'ServerProfile', 'HubAccessPolicy', 'HubAccessGrant', 'Teams', 'TeamMembers', 'CarPresets', 'ChampionshipCarReservations', 'SeasonArchive']) {
+for (const className of ['Races', 'Championships', 'Categories', 'Dependencies', 'Driver', 'CarReservations', 'RaceResult', 'ChampionshipStandings', 'Notifications', 'Reports', 'AuditLog', 'AuthChallenge', 'RaceImports', 'ContentPackage', 'RaceConnection', 'ServerProfile', 'HubAccessPolicy', 'HubAccessGrant', 'TelemetryEvidence', 'Teams', 'TeamMembers', 'CarPresets', 'ChampionshipCarReservations', 'SeasonArchive']) {
   Parse.Cloud.beforeSave(className, requireAdminAccess);
   Parse.Cloud.beforeDelete(className, requireAdminAccess);
 }

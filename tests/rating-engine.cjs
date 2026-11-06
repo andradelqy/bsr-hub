@@ -1,12 +1,15 @@
 const assert = require('node:assert/strict');
 const Rating = require('../cloud/rating-engine');
 
-assert.equal(Rating.VERSION, 'bsr-rating-v3.1.0');
+assert.equal(Rating.VERSION, 'bsr-rating-v3.1.1');
 assert.equal(Rating.seedSkillProfile(1842).display, 1842, 'migration must preserve the visible rating');
 assert.equal(Rating.normalizeSkillProfile({ ...Rating.seedSkillProfile(1911), version:'bsr-rating-v2.0.0' }, 1600).display, 1911);
 assert.equal(Rating.disciplineFor('Formula 3'), 'formula');
 assert.equal(Rating.disciplineFor('NASCAR Cup'), 'oval');
 assert.equal(Rating.disciplineFor('GT3'), 'road');
+assert.equal(Rating.disciplineFor('Formula', 'road'), 'formula', 'detected Formula class must override stale launcher defaults');
+assert.equal(Rating.disciplineFor('Oval', 'road'), 'oval', 'detected Oval class must override stale launcher defaults');
+assert.equal(Rating.disciplineFor('GT3', 'oval'), 'oval', 'an explicit custom discipline may override a generic GT3 class');
 assert.equal(Rating.primaryDiscipline({ road:{ races:0 }, formula:{ races:2 } }, 'road'), 'formula');
 assert.equal(Rating.primaryDiscipline({ road:{ races:2 }, formula:{ races:2 } }, 'road'), 'road');
 
@@ -45,6 +48,8 @@ assert.equal(Rating.sessionMultiplier('TIME_TRIAL'), 0.35);
 assert.equal(Rating.sessionMultiplier('RACE'), 1);
 
 const seededSafety = Rating.seedSafetyProfile(2.5, 'R', 0);
+assert.equal(Rating.seedSafetyProfile(2.5, 'INVALID', 0).license, 'R', 'invalid legacy licenses must normalize to Rookie');
+assert.equal(Rating.normalizeSafetyProfile({ ...seededSafety, license:'INVALID' }).license, 'R', 'invalid stored license labels must not pass MPR ordering checks');
 assert.equal(seededSafety.rating, 2.5);
 assert.equal(seededSafety.license, 'R');
 const clean = Rating.updateSafety(seededSafety.history, seededSafety.rating, { corners:500, incidentPoints:0, sessionType:'RACE', at:'2026-01-01T00:00:00Z' });
@@ -68,6 +73,12 @@ assert.equal(reliability.history.length, 20);
 assert.ok(reliability.reliability >= 70 && reliability.reliability <= 95);
 assert.deepEqual(Rating.updateReliability(reliability.history, { disconnected:true }).history, reliability.history);
 assert.deepEqual(Rating.updateReliability(reliability.history, { serverFailure:true }).history, reliability.history);
+assert.equal(Rating.updateReliability([], { baselineReliability:0, serverFailure:true }).reliability, 0, 'server failure must preserve a real legacy zero reliability');
+assert.equal(Rating.updateReliability([], { baselineReliability:50, disconnected:true }).reliability, 50, 'an excluded session must preserve the legacy reliability value');
+const legacyFirstClean = Rating.updateReliability([], { baselineReliability:50 });
+assert.equal(legacyFirstClean.reliability, 55, 'a first clean race must update the imported legacy reliability gradually');
+const legacySecondClean = Rating.updateReliability(legacyFirstClean.history, { baselineReliability:legacyFirstClean.reliability });
+assert.equal(legacySecondClean.reliability, 58, 'the imported reliability prior must remain stable across future races');
 const openingLapCrash = Rating.updateSafety(seededSafety.history, seededSafety.rating, { corners:0, incidentPoints:4 });
 assert.ok(openingLapCrash.safety < seededSafety.rating, 'first-lap incidents must count even without a completed lap');
 assert.equal(Rating.contactBadge({ cpi:120, starts:25, reliability:98 }), 'Trusted');
@@ -78,6 +89,7 @@ assert.deepEqual(Rating.nextLicense('R', 3.2, 3, { mprEligible:true }), { licens
 assert.equal(Rating.nextLicense('D', 3.8, 3, { mprEligible:false }).mpr, 3, 'invalid sessions must not advance MPR');
 assert.equal(Rating.nextLicense('C', 0.9, 5, { mprEligible:true }).license, 'D', 'only critically low SR causes immediate demotion');
 assert.equal(Rating.nextLicense('C', 1.5, 5, { mprEligible:true }).license, 'C');
+assert.equal(Rating.nextLicense('S', 4.9, 99, { mprEligible:true }).mpr, 99, 'the highest license must not accumulate useless promotion MPR');
 assert.ok(Rating.championshipPoints(1, 'finished', 2200, 30) > Rating.championshipPoints(1, 'finished', 1200, 5));
 assert.equal(Rating.championshipPoints(1, 'dnf', 2200, 30), 0);
 

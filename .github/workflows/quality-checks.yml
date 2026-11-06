@@ -1,0 +1,73 @@
+name: BSR Hub Quality Checks
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+# O workflow de CI precisa apenas ler o código. Não conceder segredos de produção.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Automated tests
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Security and Steam callback tests
+        run: npm run test:security
+
+      - name: Ratings and race processing tests
+        run: npm run test:ratings
+
+      - name: Content manager tests
+        run: npm run test:content
+
+      - name: Stewarding report tests (when available)
+        shell: pwsh
+        run: |
+          $scripts = (Get-Content package.json -Raw | ConvertFrom-Json).scripts
+          if ($scripts.'test:stewarding') {
+            npm run test:stewarding
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host 'Skipped: test:stewarding is not defined in this revision.'
+          }
+
+      - name: Telemetry tests (when available)
+        shell: pwsh
+        run: |
+          $scripts = (Get-Content package.json -Raw | ConvertFrom-Json).scripts
+          if ($scripts.'test:telemetry') {
+            npm run test:telemetry
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host 'Skipped: test:telemetry is not defined in this revision.'
+          }
+
+      - name: JavaScript syntax checks
+        shell: pwsh
+        run: |
+          node --check api.js
+          node --check cloud/main.js
+          node --check app/app.js
+          node --check app/views.js

@@ -59,6 +59,7 @@ function mprDecision({ policy, rated, driver, corners, incidents, completion, li
   const reasons = [];
   if (!rated) reasons.push('Sessão sem elegibilidade para habilidade');
   if (participation(driver) !== 'finished') reasons.push('Conclusão válida necessária');
+  if (driver.incidentEvidence === 'missing') reasons.push('Evidência de incidentes necessária para MPR');
   if (corners < rules.minimumMprCorners) reasons.push(`Mínimo de ${rules.minimumMprCorners} curvas`);
   if (completion < rules.minimumCompletion) reasons.push(`Mínimo de ${rules.minimumCompletion * 100}% da distância`);
   if (incidents * 100 / Math.max(1, corners) > rules.maximumMprIncidentsPer100Corners) reasons.push('Limite de incidentes para MPR excedido');
@@ -68,6 +69,7 @@ function mprDecision({ policy, rated, driver, corners, incidents, completion, li
 function integrityWarnings(payload) {
   const warnings = [];
   if (!payload.sourceHash) warnings.push('Arquivo sem hash de origem; integridade documental não comprovada.');
+  if (payload.sourceHashMode === 'normalized-server') warnings.push('Hash de auditoria gerado a partir da classificação normalizada; atualize o launcher para registrar também o hash do arquivo original.');
   if (payload.drivers.some(driver => !driver.carClass || driver.carClass === 'Unknown')) warnings.push('Classe não identificada; confirme antes de publicar.');
   if (payload.drivers.some(driver => driver.incidentEvidence === 'missing')) warnings.push('Incidentes sem evidência: SR deve ficar suspenso para esses pilotos.');
   if (payload.drivers.filter(driver => driver.disconnected).length >= Math.ceil(payload.drivers.length / 2)) warnings.push('Desconexão coletiva: revise possível falha do servidor.');

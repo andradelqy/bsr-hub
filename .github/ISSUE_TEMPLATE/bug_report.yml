@@ -1,0 +1,66 @@
+name: Relato de bug
+description: Registrar um problema reproduzível no BSR Hub.
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: O que está acontecendo?
+      description: Descreva o problema de forma objetiva.
+      placeholder: Ao clicar em...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Como reproduzir
+      description: Informe os passos em ordem.
+      placeholder: |
+        1. Abrir...
+        2. Clicar...
+        3. Observar...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamento observado / mensagem de erro
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versão do BSR Hub
+      placeholder: "1.6.22"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afetada
+      options:
+        - Launcher desktop
+        - Site / frontend
+        - Steam / autenticação
+        - Back4App / Cloud Code
+        - Ratings / corridas
+        - Central esportiva / stewarding
+        - Telemetria
+        - Conteúdo / AcTools
+        - Build / atualização
+        - Outra
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências
+      description: Logs sem credenciais, capturas e passos adicionais. Nunca cole tokens, senhas ou dados privados.
