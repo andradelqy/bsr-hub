@@ -32,9 +32,15 @@ Os testes locais validam o cabeçalho e os fluxos simulados. A conexão real com
 ## Correções adicionais no código — 06/11/2026
 - `content-manager.js` deixou de embutir/usar a REST API Key nas chamadas do catálogo. O processo principal carrega `window.CLIENT_KEY` de `config.js` e a entrega ao gerenciador de conteúdo; a chamada usa `X-Parse-Client-Key`.
 - O teste de segurança confirma que o módulo de conteúdo não volta a incluir `REST_API_KEY` nem o cabeçalho `X-Parse-REST-API-Key`.
-- O fallback ZIP passou a rejeitar entradas simbólicas antes de extrair. Isso reduz a exposição ao comportamento inseguro associado ao `extract-zip` 2.0.1, mas a dependência continua sinalizada pelo `npm audit`; trate como mitigação e mantenha a atualização/substituição da biblioteca em aberto.
+- O fallback ZIP foi migrado de `extract-zip` para `yauzl` 3.4.0, com extração por streaming. O código valida nomes e atributos de cada entrada, rejeita links simbólicos, caminhos absolutos/relativos inseguros, duplicidades e conflitos arquivo/diretório, aplica limite de expansão e grava arquivos sem sobrescrever destinos existentes.
 
-## Ainda pendente
-- Publicar o conteúdo de `web-dist` no Netlify e distribuir um novo instalador 1.6.22 com a migração do gerenciador para Client Key. A publicação do site e a distribuição do instalador não foram feitas nesta tarefa.
-- A antiga REST API Key permanece no histórico Git de uma revisão anterior, quando o repositório estava público. A alteração da visibilidade não apaga o histórico nem revoga a chave. Manter a chave como comprometida e revogá-la/regenerá-la no Back4App depois de coordenar a atualização dos clientes antigos.
-- A dependência `extract-zip@2.0.1` continua sinalizada pelo `npm audit`; o código agora rejeita entradas ZIP simbólicas como mitigação, mas a atualização/substituição da dependência continua recomendada.
+## Estado atualizado — 06/11/2026
+- A versão do projeto foi elevada para 1.6.23 para identificar a atualização da stack de desktop e segurança do extrator.
+- `extract-zip` deixou de ser dependência direta e o código usa `yauzl@3.4.0` com extração controlada por streaming.
+- Electron foi atualizado para 45.2.3 e Electron Builder para 26.18.0. A dependência `minimatch` vulnerável foi substituída por 11.0.5 nas árvores afetadas.
+- `npm audit` completo e `npm audit --omit=dev` retornaram zero vulnerabilidades após essas atualizações.
+- Os testes locais de segurança, ratings, conteúdo, stewarding, telemetria, AcTools, smoke Back4App, UI de ratings, launcher e sintaxe passaram nesta revisão.
+
+## Riscos e pendências mantidos por decisão
+- A antiga REST API Key do Back4App **não foi rotacionada**, por decisão expressa do proprietário em 06/11/2026. Ela deve continuar sendo tratada como comprometida. A limpeza do histórico Git remove a cópia armazenada nos commits deste repositório, mas não revoga a chave nem apaga cópias que terceiros possam ter obtido enquanto o código esteve público. A exposição só é totalmente encerrada com revogação/regeneração no Back4App.
+- Publicar o repositório não publica `web-dist`, Cloud Code nem distribui o instalador. Netlify, Back4App Cloud Code e o instalador 1.6.23 não foram publicados por esta tarefa.

@@ -6,7 +6,8 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
-const extractZip = require('extract-zip');
+const { pipeline } = require('stream/promises');
+const yauzl = require('yauzl');
 
 const APP_ID = '1CJSJppMYYgI6hEPLag7diConyKxOirJ3UPFB7QP';
 const API_URL = 'https://parseapi.back4app.com';
@@ -226,6 +227,7 @@ function validateArchiveEntry(entryName) {
   const normalized = String(entryName || '').replaceAll('\\', '/');
   if (!normalized || normalized.includes('\0') || normalized.startsWith('/') || /^[a-z]:/i.test(normalized)) throw new Error('O pacote contém um caminho absoluto inválido.');
   if (normalized.split('/').some(part => part === '..')) throw new Error('O pacote tentou gravar fora da pasta autorizada.');
+  if (normalized.split('/').some(part => part === '.')) throw new Error('O pacote tentou usar um segmento de caminho inválido.');
   return normalized;
 }
 
@@ -237,6 +239,72 @@ function isSymbolicLinkEntry(entry) {
 function validateZipEntry(entry) {
   if (isSymbolicLinkEntry(entry)) throw new Error('Links simbólicos não são permitidos em pacotes ZIP.');
   return validateArchiveEntry(entry?.fileName);
+}
+
+async function extractZipArchive(archivePath, destination, options = {}) {
+  const onEntry = typeof options.onEntry === 'function' ? options.onEntry : () => {};
+  const maxExpandedBytes = Number(options.maxExpandedBytes || MAX_EXPANDED_BYTES);
+  const maxEntries = Number(options.maxEntries || 100000);
+  const root = path.resolve(destination);
+  const zipfile = await yauzl.openPromise(archivePath, {
+    decodeStrings:true,
+    validateEntrySizes:true,
+    strictFileNames:false
+  });
+  const seen = new Map();
+  let expandedBytes = 0;
+  let entryCount = 0;
+  try {
+    for await (const entry of zipfile.eachEntry()) {
+      entryCount += 1;
+      if (entryCount > maxEntries) throw new Error('O pacote possui arquivos demais.');
+      const entryName = validateZipEntry(entry);
+      const isDirectory = entryName.endsWith('/');
+      let relative = entryName;
+      while (relative.endsWith('/')) relative = relative.slice(0, -1);
+      if (!relative) throw new Error('O pacote contém uma entrada de diretório inválida.');
+      const segments = relative.split('/');
+      if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
+        throw new Error('O pacote contém um caminho inválido.');
+      }
+      const target = path.resolve(root, ...segments);
+      if (!isInside(root, target)) throw new Error('O pacote tentou gravar fora da pasta autorizada.');
+      const key = segments.join('/').toLowerCase();
+      for (let index = 1; index < segments.length; index += 1) {
+        const ancestor = segments.slice(0, index).join('/').toLowerCase();
+        if (seen.get(ancestor) === 'file') throw new Error('O pacote contém um conflito entre arquivo e diretório.');
+        if (!seen.has(ancestor)) seen.set(ancestor, 'implicit-directory');
+      }
+      const existing = seen.get(key);
+      if (isDirectory) {
+        if (existing === 'file' || existing === 'directory') throw new Error('O pacote contém entradas ZIP duplicadas ou conflitantes.');
+        seen.set(key, 'directory');
+      } else {
+        if (existing) throw new Error('O pacote contém entradas ZIP duplicadas ou conflitantes.');
+        for (const prior of seen.keys()) {
+          if (prior.startsWith(key + '/')) throw new Error('O pacote contém um conflito entre arquivo e diretório.');
+        }
+        seen.set(key, 'file');
+      }
+      const entryBytes = Number(entry.uncompressedSize);
+      if (!Number.isSafeInteger(entryBytes) || entryBytes < 0) throw new Error('O pacote contém um tamanho de arquivo inválido.');
+      expandedBytes += entryBytes;
+      if (!Number.isSafeInteger(expandedBytes) || expandedBytes > maxExpandedBytes) {
+        throw new Error('O conteúdo expandido excede o limite de segurança.');
+      }
+      onEntry(entryName, entry, expandedBytes);
+      if (isDirectory) {
+        await fsp.mkdir(target, { recursive:true });
+        continue;
+      }
+      await fsp.mkdir(path.dirname(target), { recursive:true });
+      const readStream = await zipfile.openReadStreamPromise(entry);
+      await pipeline(readStream, fs.createWriteStream(target, { flags:'wx' }));
+    }
+  } finally {
+    zipfile.close();
+  }
+  return { expandedBytes, entryCount };
 }
 
 function sanitizePackageMetadata(raw) {
@@ -618,14 +686,10 @@ class BSRContentManager {
         entries.push(...(extracted.files || []).map(validateArchiveEntry));
       } else {
         if (archiveFormat !== 'zip') throw new Error('A análise de RAR e 7z exige o motor AcTools incluído no launcher.');
-        await extractZip(archivePath, { dir:staging, onEntry:entry => {
-          const entryName = validateZipEntry(entry);
-          entries.push(entryName);
-          const entryBytes = Number(entry.uncompressedSize || 0);
-          if (!Number.isSafeInteger(entryBytes) || entryBytes < 0) throw new Error('O pacote contém um tamanho de arquivo inválido.');
-          expandedBytes += entryBytes;
-          if (expandedBytes > MAX_EXPANDED_BYTES) throw new Error('O conteúdo expandido excede o limite de segurança.');
-        } });
+        const extraction = await extractZipArchive(archivePath, staging, {
+          onEntry:entryName => entries.push(entryName)
+        });
+        expandedBytes = extraction.expandedBytes;
       }
       const files = await listFiles(staging);
       if (!files.length) throw new Error('O pacote não contém arquivos instaláveis.');
@@ -996,13 +1060,8 @@ class BSRContentManager {
         for (const entry of extracted.files || []) validateArchiveEntry(entry);
       } else {
         if (archiveFormat !== 'zip') throw new Error('Pacotes RAR e 7z exigem o motor AcTools incluído no launcher. Reinstale a versão atual do BSR Hub.');
-        await extractZip(download.path, { dir:staging, onEntry:entry => {
-          validateZipEntry(entry);
-          const entryBytes = Number(entry.uncompressedSize || 0);
-          if (!Number.isSafeInteger(entryBytes) || entryBytes < 0) throw new Error('O pacote contém um tamanho de arquivo inválido.');
-          expandedBytes += entryBytes;
-          if (expandedBytes > MAX_EXPANDED_BYTES) throw new Error('O conteúdo expandido excede o limite de segurança.');
-        } });
+        const extraction = await extractZipArchive(download.path, staging);
+        expandedBytes = extraction.expandedBytes;
       }
       await listFiles(staging);
       ensureNotAborted(signal);
@@ -1382,4 +1441,4 @@ function registerContentManager({ app, dialog, net, BrowserWindow, ipcMain, getM
   return manager;
 }
 
-module.exports = { APP_ID, API_URL, BSRContentManager, registerContentManager, sanitizePackageMetadata, validateArchiveEntry, validateZipEntry, isSymbolicLinkEntry, detectArchiveLayout, detectArchiveFormat, isOptionalArchiveMetadata, isInside, parseSteamLibraries, setIniValue, updateIniSections, cleanSessionToken, normalizeServerTrack, resolveServerTrack, normalizeOnlineServerInformation, googleDriveFileId, canonicalGoogleDriveUrl, googleDriveConfirmationUrl };
+module.exports = { APP_ID, API_URL, BSRContentManager, registerContentManager, sanitizePackageMetadata, validateArchiveEntry, validateZipEntry, isSymbolicLinkEntry, extractZipArchive, detectArchiveLayout, detectArchiveFormat, isOptionalArchiveMetadata, isInside, parseSteamLibraries, setIniValue, updateIniSections, cleanSessionToken, normalizeServerTrack, resolveServerTrack, normalizeOnlineServerInformation, googleDriveFileId, canonicalGoogleDriveUrl, googleDriveConfirmationUrl };

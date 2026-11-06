@@ -1,5 +1,7 @@
 # BSR Racing Hub
 
+**Versão atual do aplicativo:** 1.6.23
+
 Repositório de desenvolvimento do BSR Racing Hub, plataforma da Brasil Sim Racing. O projeto reúne o launcher Electron, a interface web, o Cloud Code do Back4App, o motor de ratings, o processador de resultados, a telemetria e a ponte nativa baseada em AcTools.
 
 Para uma visão completa da arquitetura, dos módulos, do processo de contribuição e da publicação, consulte o [Manual Técnico e Operacional](docs/BSR_HUB_MANUAL_TECNICO_E_OPERACIONAL.pdf).

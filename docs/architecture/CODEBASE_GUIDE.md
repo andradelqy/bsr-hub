@@ -1,7 +1,7 @@
 # BSR Hub — guia prático do código
 
 **Projeto:** BSR Racing Hub
-**Versão da aplicação nesta revisão local:** 1.6.22
+**Versão da aplicação nesta revisão local:** 1.6.23
 **Objetivo:** explicar a estrutura, as responsabilidades dos módulos e os caminhos principais da aplicação para que desenvolvedores e QC saibam onde procurar antes de alterar código.
 
 Este guia descreve o código presente no repositório. Ele não substitui os critérios de produto, as regras de segurança nem o processo de aprovação descritos em [TEAM_WORKFLOW_QC.md](../operations/TEAM_WORKFLOW_QC.md).

@@ -17,6 +17,7 @@ const {
   setIniValue,
   cleanSessionToken,
   detectArchiveFormat,
+  extractZipArchive,
   resolveServerTrack,
   normalizeOnlineServerInformation,
   googleDriveFileId,
@@ -185,6 +186,12 @@ assert.doesNotMatch(preload, /writeFile|readFile|exec|spawn/, 'renderer must not
     const zipPath = path.join(root, 'bsr-test-car.zip');
     fs.writeFileSync(zipPath, storedZip('bsr_test_car/data.acd', 'installed by BSR'));
     assert.equal(await detectArchiveFormat(zipPath), 'zip');
+    const extractedZipRoot = path.join(root, 'direct-extract');
+    fs.mkdirSync(extractedZipRoot, { recursive:true });
+    const extractionResult = await extractZipArchive(zipPath, extractedZipRoot);
+    assert.equal(extractionResult.entryCount, 1, 'the streaming ZIP extractor must process each central-directory entry once');
+    assert.equal(extractionResult.expandedBytes, Buffer.byteLength('installed by BSR'));
+    assert.equal(fs.readFileSync(path.join(extractedZipRoot, 'bsr_test_car', 'data.acd'), 'utf8'), 'installed by BSR');
     const rarSignaturePath = path.join(root, 'header-only.rar');
     const sevenZipSignaturePath = path.join(root, 'header-only.7z');
     fs.writeFileSync(rarSignaturePath, Buffer.from([0x52,0x61,0x72,0x21,0x1a,0x07,0x00]));

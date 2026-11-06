@@ -1,6 +1,6 @@
 {
     "name": "bsr-racing-hub",
-    "version": "1.6.22",
+    "version": "1.6.23",
     "description": "App desktop oficial da Brasil Sim Racing",
     "main": "main.js",
     "scripts": {
@@ -23,9 +23,12 @@
     },
     "author": "BSR Team",
     "license": "MIT",
+    "overrides": {
+        "minimatch@>=7.0.0 <11.0.1": "11.0.5"
+    },
     "devDependencies": {
-        "electron": "^28.2.0",
-        "electron-builder": "^24.9.1",
+        "electron": "^45.2.3",
+        "electron-builder": "^26.18.0",
         "rcedit": "^4.0.1"
     },
     "build": {
@@ -79,6 +82,6 @@
         }
     },
     "dependencies": {
-        "extract-zip": "^2.0.1"
+        "yauzl": "3.4.0"
     }
 }
