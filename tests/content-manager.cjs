@@ -185,8 +185,12 @@ assert.doesNotMatch(preload, /writeFile|readFile|exec|spawn/, 'renderer must not
     const zipPath = path.join(root, 'bsr-test-car.zip');
     fs.writeFileSync(zipPath, storedZip('bsr_test_car/data.acd', 'installed by BSR'));
     assert.equal(await detectArchiveFormat(zipPath), 'zip');
-    assert.equal(await detectArchiveFormat(path.resolve(__dirname, '..', 'native', 'bsr-actools-bridge', 'fixtures', 'bsr_test_car.rar')), 'rar');
-    assert.equal(await detectArchiveFormat(path.resolve(__dirname, '..', 'native', 'bsr-actools-bridge', 'fixtures', 'bsr_test_track.7z')), '7z');
+    const rarSignaturePath = path.join(root, 'header-only.rar');
+    const sevenZipSignaturePath = path.join(root, 'header-only.7z');
+    fs.writeFileSync(rarSignaturePath, Buffer.from([0x52,0x61,0x72,0x21,0x1a,0x07,0x00]));
+    fs.writeFileSync(sevenZipSignaturePath, Buffer.from([0x37,0x7a,0xbc,0xaf,0x27,0x1c]));
+    assert.equal(await detectArchiveFormat(rarSignaturePath), 'rar');
+    assert.equal(await detectArchiveFormat(sevenZipSignaturePath), '7z');
     const archive = fs.readFileSync(zipPath);
     const pkg = sanitizePackageMetadata({
       objectId:'pkg123', slug:'bsr-test-car', name:'BSR Test Car', version:'1.0.0', type:'car', targetId:'bsr_test_car',
