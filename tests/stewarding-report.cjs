@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const views = fs.readFileSync(path.join(root, 'app', 'views.js'), 'utf8');
-const api = fs.readFileSync(path.join(root, 'api.js'), 'utf8');
+const views = fs.readFileSync(path.join(root, 'site', 'app', 'views.js'), 'utf8');
+const api = fs.readFileSync(path.join(root, 'site', 'api.js'), 'utf8');
 const cloud = fs.readFileSync(path.join(root, 'cloud', 'main.js'), 'utf8');
 
 assert.match(views, /const form = event\.currentTarget;/, 'capture the form before awaiting');

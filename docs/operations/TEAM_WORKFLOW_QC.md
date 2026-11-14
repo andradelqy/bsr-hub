@@ -91,7 +91,7 @@ Padrão sugerido para nomes de branch:
     docs/manual-do-staff
     refactor/servico-de-autenticacao
 
-Não incluir config.js, .env, tokens, chaves privadas, dados pessoais ou dumps de produção nos commits.
+Não incluir site/config.js, .env, tokens, chaves privadas, dados pessoais ou dumps de produção nos commits.
 
 ## 6. Como o QC deve revisar
 
@@ -167,7 +167,7 @@ O proprietário é o único responsável por autorizar a publicação. A publica
 
 1. Cada pessoa usa sua própria conta GitHub e autenticação em dois fatores.
 2. Não compartilhar senhas, tokens ou sessões.
-3. config.js, .env e arquivos com segredos ficam fora do Git.
+3. site/config.js, .env e arquivos com segredos ficam fora do Git.
 4. Usar variáveis de ambiente/segredos próprios para homologação e produção.
 5. Não copiar dados reais de pilotos para testes sem necessidade e autorização.
 6. Não executar scripts desconhecidos com acesso a credenciais ou banco.

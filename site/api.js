@@ -70,7 +70,7 @@
 
   function buildHeaders(extraHeaders) {
     const headers = {
-      '[REDACTED_BACK4APP_SECRET]': APP_ID,
+      'X-Parse-Application-Id': APP_ID,
       'X-Parse-Client-Key': CLIENT_KEY,
       'Content-Type': 'application/json',
       ...extraHeaders

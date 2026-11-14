@@ -17,7 +17,7 @@ function requestParse(route, method, headers, body) {
       path: route,
       method,
       headers: {
-        '[REDACTED_BACK4APP_SECRET]': headers.appId,
+        'X-Parse-Application-Id': headers.appId,
         'X-Parse-Client-Key': headers.clientKey,
         'X-Parse-Session-Token': headers.sessionToken,
         ...(headers.contentType ? { 'Content-Type': headers.contentType } : {}),

@@ -31,14 +31,14 @@ O motor validado na prova de conceito já está conectado ao fluxo de produção
 | IPC persistente JSON-lines Node/Electron → bridge → AcTools | passou |
 | Eventos de progresso enviados ao Node/Electron | passou |
 
-Os testes usam fixtures mínimas em `native/bsr-actools-bridge/fixtures-src`. A raiz simulada contém `apps`, `content/cars`, `content/tracks`, `acs.exe` e `AssettoCorsa.exe`, atendendo à validação original de `AcRootDirectory`.
+Os testes usam fixtures mínimas em `launcher/native/bsr-actools-bridge/fixtures-src`. A raiz simulada contém `apps`, `content/cars`, `content/tracks`, `acs.exe` e `AssettoCorsa.exe`, atendendo à validação original de `AcRootDirectory`.
 
 ## Cadeia do motor original
 
 ```text
 Electron ipcMain (content:install, catálogo canônico validado)
   -> BSRContentManager (hash, manifesto, conflito, backup e rollback)
-    -> actools-bridge.js (processo filho privado e JSON-lines)
+    -> launcher/actools-bridge.js (processo filho privado e JSON-lines)
       -> bsr-actools-bridge.exe
         -> ContentInstallationManager.InstallAsync(..., ForceNewTask, ...)
           -> ContentInstallationEntry.RunAsync()
@@ -127,7 +127,7 @@ npm run test:actools
 - A Ms-PL não concede direito sobre nome, logotipo ou marca dos contribuidores. A UI e identidade continuam sendo BSR.
 - FirstFloor.ModernUI também traz Ms-PL.
 - SharpCompress e Json.NET trazem MIT e exigem preservação dos respectivos avisos.
-- O pacote mínimo inclui cópias das quatro licenças em `native/bsr-actools-bridge/dist/licenses` e o arquivo `THIRD-PARTY-NOTICES.md`.
+- O pacote mínimo inclui cópias das quatro licenças em `launcher/native/bsr-actools-bridge/dist/licenses` e o arquivo `THIRD-PARTY-NOTICES.md`.
 - `AcManager.Internal.dll` existe no grafo completo e não tem fonte própria no repositório, mas não foi carregado nem incluído no fechamento mínimo validado. Se algum recurso futuro o tornar necessário (por exemplo, caminhos de assinatura/autenticação), a redistribuição deve ser revisada antes de adicioná-lo.
 - O executável `7z.exe` não é redistribuído. Se futuramente o backend `SevenZipContentInstallator` for habilitado, será necessário incluir e cumprir a licença LGPL/unRAR do 7-Zip Extra ou exigir uma instalação separada. O backend SharpCompress testado torna isso desnecessário para os formatos atuais.
 

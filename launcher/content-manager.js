@@ -724,7 +724,7 @@ class BSRContentManager {
     if (!this.clientKey || /^(YOUR_|PREENCHER|CHANGE_ME)/i.test(this.clientKey)) {
       throw new Error('A Client Key do Back4App não foi configurada no launcher.');
     }
-    const headers = { '[REDACTED_BACK4APP_SECRET]':APP_ID, 'X-Parse-Client-Key':this.clientKey, 'Content-Type':'application/json' };
+    const headers = { 'X-Parse-Application-Id':APP_ID, 'X-Parse-Client-Key':this.clientKey, 'Content-Type':'application/json' };
     if (token) headers['X-Parse-Session-Token'] = token;
     const response = await this.net.fetch(`${API_URL}/functions/getContentCatalog`, {
       method:'POST', headers, body:'{}'

@@ -3,7 +3,7 @@ node_modules/
 .tooling/
 
 # Private runtime configuration and credentials
-config.js
+site/config.js
 .env
 .env.*
 !.env.example
@@ -17,10 +17,10 @@ cloud-upload/
 cloud-upload-v*/
 
 # Native bridge build outputs and fixtures
-native/**/bin/
-native/**/obj/
-native/**/dist/
-native/**/fixtures/
+launcher/native/**/bin/
+launcher/native/**/obj/
+launcher/native/**/dist/
+launcher/native/**/fixtures/
 
 # Python cache and compiled bytecode
 **/__pycache__/

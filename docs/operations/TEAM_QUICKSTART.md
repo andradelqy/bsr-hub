@@ -17,10 +17,10 @@ O proprietário continua sendo o único responsável pela publicação oficial. 
 
 Cada integrante precisa:
 - Ter sua própria conta GitHub e autenticação em dois fatores.
-- Receber acesso ao repositório privado BSR Hub.
+- Receber acesso ao repositório BSR Hub.
 - Instalar Git, Node.js 24 e um editor (por exemplo, VS Code).
 - Ter acesso às configurações locais necessárias para executar o projeto.
-- Não compartilhar credenciais, arquivos config.js ou tokens.
+- Não compartilhar credenciais, arquivos site/config.js ou tokens.
 
 Repositório: https://github.com/andradelqy/bsr-hub
 
@@ -32,11 +32,11 @@ Abra PowerShell e execute:
 
     git clone --recurse-submodules https://github.com/andradelqy/bsr-hub.git
     cd bsr-hub
-    Copy-Item config.example.js config.js
+    Copy-Item site/config.example.js site/config.js
     npm ci
 
 Depois:
-1. Abra config.js e preencha os valores de cliente Back4App fornecidos para desenvolvimento.
+1. Abra site/config.js e preencha os valores de cliente Back4App fornecidos para desenvolvimento.
 2. Nunca coloque Master Key ou REST API Key nesse arquivo.
 3. Para desenvolvimento da integração nativa, execute npm run build:actools.
 4. Inicie o launcher com npm start.
@@ -72,14 +72,14 @@ Para correção de problema, use fix/; para documentação, docs/; para funciona
 2. Leia os testes relacionados antes de alterar uma regra.
 3. Faça mudanças pequenas e relacionadas à Issue.
 4. Não remova código ou documentos sem entender se ainda são usados.
-5. Não inclua node_modules, dist, web-dist, config.js, .env, cache, dados reais ou binários gerados.
+5. Não inclua node_modules, dist, web-dist, site/config.js, .env, cache, dados reais ou binários gerados.
 6. Faça commits curtos e descritivos.
 
 Exemplo:
 
     git status
     git diff
-    git add app/views.js tests/ratings-ui.cjs
+    git add site/app/views.js tests/ratings-ui.cjs
     git commit -m "feat: adiciona filtro de campeonato"
 
 Antes de enviar, execute os testes aplicáveis. Para uma revisão ampla, rode:
@@ -114,7 +114,7 @@ Não abra PR diretamente para main. Não marque como pronto se os testes ainda e
 O QC deve:
 1. Confirmar que o PR tem Issue, escopo e critérios de aceite.
 2. Ler o diff completo, inclusive exclusões e arquivos novos.
-3. Conferir se não há config.js, .env, credenciais, dados reais ou arquivos gerados.
+3. Conferir se não há site/config.js, .env, credenciais, dados reais ou arquivos gerados.
 4. Rodar a CI e os testes locais adequados.
 5. Testar o comportamento principal e os cenários de erro/regressão.
 6. Revisar autorização, validação e impacto no banco quando houver Cloud Code.
@@ -174,7 +174,7 @@ Os artefatos preparados precisam ser conferidos. Site, Cloud Code e instalador s
 
 ## 11. Regras de segurança que não podem ser ignoradas
 
-- Não versionar config.js ou .env.
+- Não versionar site/config.js ou .env.
 - Não incluir Master Key, REST API Key, chave Steam ou senhas em código distribuído.
 - Não compartilhar tokens no Discord, Issues, Pull Requests ou chat.
 - Não testar com dados reais de pilotos sem necessidade/autorização.
@@ -185,7 +185,7 @@ Os artefatos preparados precisam ser conferidos. Site, Cloud Code e instalador s
 
 ## 12. Regras GitHub que o proprietário deve ativar
 
-Os arquivos locais não ativam proteção sozinhos. Em Settings → Rules → Rulesets, crie regras separadas para develop e main. As opções disponíveis dependem do plano GitHub do repositório privado.
+Os arquivos locais não ativam proteção sozinhos. Em Settings → Rules → Rulesets, crie regras separadas para develop e main. O repositório atual é público; depois de criar as regras, confirme que os rulesets de main e develop aparecem como Active.
 
 **develop**
 - Pull Request obrigatório.

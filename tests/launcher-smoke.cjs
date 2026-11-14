@@ -21,7 +21,7 @@ app.whenReady().then(async () => {
   };
 
   try {
-    await window.loadFile(path.resolve(__dirname, '..', 'index.html'));
+    await window.loadFile(path.resolve(__dirname, '..', 'site', 'index.html'));
     await waitFor("document.documentElement.classList.contains('app-ready')");
     assert.equal(await run("getComputedStyle(document.querySelector('#app')).opacity"), '1');
     assert.notEqual(await run("getComputedStyle(document.querySelector('.nav-glider')).transitionDuration"), '0s', 'a navegação deve manter animações ativas');

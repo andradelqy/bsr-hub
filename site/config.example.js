@@ -1,5 +1,5 @@
-// Copy this file to config.js and fill in the values from Back4App.
-// config.js is intentionally ignored by Git. Never put the REST API Key or Master Key here.
+// Copie este arquivo para config.js e preencha os dados do seu ambiente Back4App.
+// Use apenas identificadores e chaves de cliente. Nunca coloque chaves administrativas aqui.
 window.APP_ID = 'YOUR_BACK4APP_APP_ID';
 window.CLIENT_KEY = 'YOUR_BACK4APP_CLIENT_KEY';
 window.JAVASCRIPT_KEY = 'YOUR_BACK4APP_JAVASCRIPT_KEY';

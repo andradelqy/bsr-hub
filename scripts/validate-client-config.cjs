@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const configPath = process.env.BSR_CONFIG_PATH
   ? path.resolve(process.env.BSR_CONFIG_PATH)
-  : path.join(root, 'config.js');
+  : path.join(root, 'site', 'config.js');
 
 function fail(message) {
   console.error('[BSR Config] ' + message);

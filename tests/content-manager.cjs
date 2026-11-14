@@ -23,7 +23,7 @@ const {
   googleDriveFileId,
   canonicalGoogleDriveUrl,
   googleDriveConfirmationUrl
-} = require('../content-manager');
+} = require('../launcher/content-manager');
 
 function crc32(buffer) {
   let crc = 0xffffffff;
@@ -151,7 +151,7 @@ assert.doesNotMatch(canonicalGoogleDriveUrl(driveShare), /authuser/);
 const driveGate = '<html><form action="https://drive.usercontent.google.com/download"><input type="hidden" name="id" value="1AbCdEfGhIjKlMnOpQrStUvWxYz12345"><input type="hidden" name="export" value="download"><input type="hidden" name="confirm" value="t"><input type="hidden" name="uuid" value="gate-token"></form></html>';
 assert.match(googleDriveConfirmationUrl(driveGate, driveShare), /uuid=gate-token/);
 
-const preload = fs.readFileSync(path.resolve(__dirname, '..', 'preload.js'), 'utf8');
+const preload = fs.readFileSync(path.resolve(__dirname, '..', 'launcher', 'preload.js'), 'utf8');
 assert.match(preload, /content:\s*Object\.freeze/);
 assert.match(preload, /inspectPackage:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('content:inspect-package'\)/);
 assert.match(preload, /download:\s*\(pkg, sessionToken\)/);

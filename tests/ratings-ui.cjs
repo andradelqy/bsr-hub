@@ -17,7 +17,7 @@ app.whenReady().then(async () => {
   const output = path.resolve(__dirname, 'artifacts');
   fs.mkdirSync(output, { recursive:true });
   try {
-    await window.loadFile(path.resolve(__dirname, '..', 'index.html'));
+    await window.loadFile(path.resolve(__dirname, '..', 'site', 'index.html'));
     for (let attempt = 0; attempt < 160; attempt += 1) {
       if (await run("document.documentElement.classList.contains('app-ready')")) break;
       await delay(200);
