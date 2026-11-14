@@ -13,7 +13,7 @@ app.whenReady().then(async () => {
     throw new Error('Timeout: '+expression);
   };
   try {
-    await win.loadFile(path.resolve('index.html'));
+    await win.loadFile(path.resolve('site', 'index.html'));
     await waitFor("document.documentElement.classList.contains('app-ready')");
     await delay(1300);
     const home = await run(`({time:document.querySelector('.hero-kicker time')?.textContent,online:BSR.state.online,opacity:getComputedStyle(document.querySelector('#app')).opacity})`);

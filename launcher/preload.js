@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Only the capabilities used by the current launcher are exposed.
+// So deixo a interface acessar as funcoes que ela realmente precisa.
 contextBridge.exposeInMainWorld('electronAPI', {
   controlWindow: action => {
     if (['minimize', 'maximize', 'close'].includes(action)) {

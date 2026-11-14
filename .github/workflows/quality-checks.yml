@@ -67,7 +67,7 @@ jobs:
       - name: JavaScript syntax checks
         shell: pwsh
         run: |
-          node --check api.js
+          node --check site/api.js
           node --check cloud/main.js
-          node --check app/app.js
-          node --check app/views.js
+          node --check site/app/app.js
+          node --check site/app/views.js

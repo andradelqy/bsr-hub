@@ -6,7 +6,7 @@ module.exports = async function applyWindowsBranding(context) {
 
   const appInfo = context.packager.appInfo;
   const executable = path.join(context.appOutDir, `${appInfo.productFilename}.exe`);
-  const icon = path.join(context.packager.projectDir, 'assets', 'foto', 'bsr.ico');
+  const icon = path.join(context.packager.projectDir, 'site', 'assets', 'foto', 'bsr.ico');
 
   await rcedit(executable, {
     icon,

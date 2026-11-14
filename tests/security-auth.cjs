@@ -11,7 +11,9 @@ class MemoryStorage {
 }
 
 const root = path.resolve(__dirname, '..');
-const source = fs.readFileSync(path.join(root, 'api.js'), 'utf8');
+const site = path.join(root, 'site');
+const launcher = path.join(root, 'launcher');
+const source = fs.readFileSync(path.join(site, 'api.js'), 'utf8');
 const localStorage = new MemoryStorage();
 const sessionStorage = new MemoryStorage();
 const requests = [];
@@ -92,24 +94,24 @@ vm.runInContext(source, context, { filename: 'api.js' });
   assert.equal(requests.at(-1).options.method, 'POST');
 
   for (const file of ['index.html', 'login.html', 'steam_callback.html', 'admin.html']) {
-    const html = fs.readFileSync(path.join(root, file), 'utf8');
+    const html = fs.readFileSync(path.join(site, file), 'utf8');
     assert.match(html, /Content-Security-Policy/i, `${file} must declare a CSP`);
   }
 
-  const callback = fs.readFileSync(path.join(root, 'steam_callback.html'), 'utf8');
+  const callback = fs.readFileSync(path.join(site, 'steam_callback.html'), 'utf8');
   assert.match(callback, /received!==expected/, 'browser callback must verify its state');
 
-  const apiClient = fs.readFileSync(path.join(root, 'api.js'), 'utf8');
-  const configPath = path.join(root, 'config.js');
+  const apiClient = fs.readFileSync(path.join(site, 'api.js'), 'utf8');
+  const configPath = path.join(site, 'config.js');
   // config.js is intentionally ignored by Git. CI uses only the safe example;
   // local development still validates the machine-specific config when present.
   const configSource = fs.existsSync(configPath)
     ? fs.readFileSync(configPath, 'utf8')
-    : fs.readFileSync(path.join(root, 'config.example.js'), 'utf8');
-  const configExample = fs.readFileSync(path.join(root, 'config.example.js'), 'utf8');
-  const uploaderSource = fs.readFileSync(path.join(root, 'telemetry', 'uploader.js'), 'utf8');
-  const contentManagerSource = fs.readFileSync(path.join(root, 'content-manager.js'), 'utf8');
-  const mainSource = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+    : fs.readFileSync(path.join(site, 'config.example.js'), 'utf8');
+  const configExample = fs.readFileSync(path.join(site, 'config.example.js'), 'utf8');
+  const uploaderSource = fs.readFileSync(path.join(launcher, 'telemetry', 'uploader.js'), 'utf8');
+  const contentManagerSource = fs.readFileSync(path.join(launcher, 'content-manager.js'), 'utf8');
+  const mainSource = fs.readFileSync(path.join(launcher, 'main.js'), 'utf8');
   assert.match(apiClient, /X-Parse-Client-Key/);
   assert.doesNotMatch(apiClient, /REST_API_KEY|X-Parse-REST-API-Key/);
   assert.doesNotMatch(configSource, /REST_API_KEY|X-Parse-REST-API-Key/);
@@ -122,7 +124,7 @@ vm.runInContext(source, context, { filename: 'api.js' });
   assert.match(mainSource, /registerContentManager\([\s\S]*?clientKey/);
   assert.match(configSource, /window\.CLIENT_KEY\s*=/);
   assert.doesNotMatch(configSource, /window\.REST_API_KEY\s*=/);
-  const components = fs.readFileSync(path.join(root, 'app', 'components.js'), 'utf8');
+  const components = fs.readFileSync(path.join(site, 'app', 'components.js'), 'utf8');
   assert.match(apiClient, /async getRaceResults\(sessionId, raceId\)[\s\S]*?cloud\('getRaceResults',[\s\S]*?raceId:/, 'the launcher must query published results by session and race id');
   assert.match(components, /race\.resultsSessionId \|\| race\.sessionId[\s\S]*?getRaceResults\(resultsKey, race\.id\)/, 'the results drawer must prefer the canonical publication link');
 
@@ -179,29 +181,29 @@ vm.runInContext(source, context, { filename: 'api.js' });
   assert.match(cloud, /hiddenFromPublic/, 'merged driver records must be hidden from public listings');
   assert.doesNotMatch(cloud, /\.map\(driverDTO\)/, 'public DTO callbacks must not accidentally receive the array index as a privacy flag');
 
-  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(launcher, 'main.js'), 'utf8');
   assert.match(main, /127\.0\.0\.1/, 'desktop callback must bind to loopback');
-  assert.doesNotMatch(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), /openExternal\s*:/, 'renderer must not expose arbitrary external navigation');
-  const admin = fs.readFileSync(path.join(root, 'admin.html'), 'utf8');
+  assert.doesNotMatch(fs.readFileSync(path.join(launcher, 'preload.js'), 'utf8'), /openExternal\s*:/, 'renderer must not expose arbitrary external navigation');
+  const admin = fs.readFileSync(path.join(site, 'admin.html'), 'utf8');
   assert.match(admin, /index\.html#\/admin/, 'legacy admin URL must redirect into the launcher');
-  const views = fs.readFileSync(path.join(root, 'app', 'views.js'), 'utf8');
+  const views = fs.readFileSync(path.join(site, 'app', 'views.js'), 'utf8');
   assert.match(views, /id="adminRaceRegistration"/, 'integrated race editor must expose the registration option');
   assert.match(views, /requiresRegistration:document\.getElementById\('adminRaceRegistration'\)\.checked/, 'integrated admin must persist the selected registration mode');
   assert.match(views, /duration:document\.getElementById\('adminRaceDuration'\)\.value\.trim\(\)/, 'race editor must send duration as a String');
   assert.doesNotMatch(views, /duration:Number\(document\.getElementById\('adminRaceDuration'\)/, 'race editor must not recreate the duration schema mismatch');
   assert.match(views, /launcherAdminLogin/, 'launcher must contain an integrated administrative login');
-  const apiSource = fs.readFileSync(path.join(root, 'api.js'), 'utf8');
+  const apiSource = fs.readFileSync(path.join(site, 'api.js'), 'utf8');
   assert.match(apiSource, /enterAdminMode/, 'API must support entering admin mode inside the launcher');
   assert.match(apiSource, /ADMIN_RETURN_KEY/, 'admin mode must preserve the previous driver session');
   assert.match(apiSource, /setContentServerProfile/, 'admin API must expose the single server profile operation');
   assert.match(apiSource, /getHubAccessStatus/, 'API must expose the server-validated access status');
   assert.match(apiSource, /setHubAccessGrant/, 'admin API must expose invite management');
 
-  const appSource = fs.readFileSync(path.join(root, 'app', 'app.js'), 'utf8');
+  const appSource = fs.readFileSync(path.join(site, 'app', 'app.js'), 'utf8');
   assert.match(appSource, /renderAccessGate/, 'launcher must render a dedicated invite-only gate');
   assert.match(appSource, /name !== 'admin'/, 'organization login must remain reachable while the public hub is restricted');
 
-  const contentView = fs.readFileSync(path.join(root, 'app', 'content.js'), 'utf8');
+  const contentView = fs.readFileSync(path.join(site, 'app', 'content.js'), 'utf8');
   assert.match(contentView, /Assistente de publicação/, 'content administration must use the guided publisher');
   assert.match(contentView, /SERVIDOR ÚNICO/, 'content administration must expose one shared server');
   assert.match(contentView, /packages\.filter\(item => item\.approved && item\.enabled !== false\)/, 'race requirements must only list published packages');

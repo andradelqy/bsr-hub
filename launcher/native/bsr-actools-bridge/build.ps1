@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $BridgeDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Workspace = (Resolve-Path (Join-Path $BridgeDir '..\..')).Path
+$Workspace = (Resolve-Path (Join-Path $BridgeDir '..\..\..')).Path
 $AcTools = Join-Path $Workspace 'vendor\actools'
 $Tools = Join-Path $Workspace '.tooling\nuget'
 $Compiler = Join-Path $Tools 'Microsoft.Net.Compilers.3.11.0\tools\csc.exe'

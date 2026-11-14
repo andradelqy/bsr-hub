@@ -5,11 +5,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { AcToolsBridge } = require('../actools-bridge');
-const { BSRContentManager, sanitizePackageMetadata } = require('../content-manager');
+const { AcToolsBridge } = require('../launcher/actools-bridge');
+const { BSRContentManager, sanitizePackageMetadata } = require('../launcher/content-manager');
 
 (async () => {
-  const base = path.resolve(__dirname, '..', 'native', 'bsr-actools-bridge');
+  const base = path.resolve(__dirname, '..', 'launcher', 'native', 'bsr-actools-bridge');
   const executable = path.join(base, 'dist', 'bsr-actools-bridge.exe');
   const internalRuntime = path.join(base, 'dist', 'AcManager.Internal.dll');
   const archive = path.join(base, 'fixtures', 'bsr_test_car.zip');

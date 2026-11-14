@@ -1,87 +1,80 @@
 {
-    "name": "bsr-racing-hub",
-    "version": "1.6.23",
-    "description": "App desktop oficial da Brasil Sim Racing",
-    "main": "main.js",
-    "scripts": {
-        "start": "electron .",
-        "build:web": "node scripts/validate-client-config.cjs && node scripts/build-web.cjs",
-        "test:security": "node tests/security-auth.cjs && node tests/steam-callbacks.cjs",
-        "test:ratings": "node tests/rating-engine.cjs && node tests/race-processor.cjs && node tests/rating-policy.cjs && node tests/rating-publication-integration.cjs",
-        "test:content": "node tests/content-manager.cjs",
-        "test:stewarding": "node tests/stewarding-report.cjs",
-        "test:actools": "node tests/actools-bridge.cjs",
-        "build:actools": "powershell -NoProfile -ExecutionPolicy Bypass -File native/bsr-actools-bridge/build.ps1",
-        "test:launcher": "electron tests/launcher-smoke.cjs",
-        "test:ratings-ui": "electron tests/ratings-ui.cjs",
-        "test:production": "node tests/production-smoke.cjs",
-        "test:telemetry": "node tests/telemetry-engine.cjs && node tests/telemetry-uploader.cjs",
-        "telemetry:listen": "node telemetry/collector.js",
-        "build": "node scripts/validate-client-config.cjs && electron-builder",
-        "build:win": "node scripts/validate-client-config.cjs && electron-builder --win --x64",
-        "stage:cloud": "node scripts/stage-cloud-upload.cjs"
+  "name": "bsr-racing-hub",
+  "version": "1.6.23",
+  "description": "App desktop oficial da Brasil Sim Racing",
+  "main": "launcher/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:web": "node scripts/validate-client-config.cjs && node scripts/build-web.cjs",
+    "test:security": "node tests/security-auth.cjs && node tests/steam-callbacks.cjs",
+    "test:ratings": "node tests/rating-engine.cjs && node tests/race-processor.cjs && node tests/rating-policy.cjs && node tests/rating-publication-integration.cjs",
+    "test:content": "node tests/content-manager.cjs",
+    "test:stewarding": "node tests/stewarding-report.cjs",
+    "test:actools": "node tests/actools-bridge.cjs",
+    "build:actools": "powershell -NoProfile -ExecutionPolicy Bypass -File launcher/native/bsr-actools-bridge/build.ps1",
+    "test:launcher": "electron tests/launcher-smoke.cjs",
+    "test:ratings-ui": "electron tests/ratings-ui.cjs",
+    "test:production": "node tests/production-smoke.cjs",
+    "test:telemetry": "node tests/telemetry-engine.cjs && node tests/telemetry-uploader.cjs",
+    "telemetry:listen": "node launcher/telemetry/collector.js",
+    "build": "node scripts/validate-client-config.cjs && electron-builder",
+    "build:win": "node scripts/validate-client-config.cjs && electron-builder --win --x64",
+    "stage:cloud": "node scripts/stage-cloud-upload.cjs"
+  },
+  "author": "BSR Team",
+  "license": "MIT",
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "11.0.5"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "rcedit": "^4.0.1"
+  },
+  "build": {
+    "appId": "com.bsr.racing",
+    "productName": "BSR Racing Hub",
+    "directories": {
+      "output": "dist/desktop"
     },
-    "author": "BSR Team",
-    "license": "MIT",
-    "overrides": {
-        "minimatch@>=7.0.0 <11.0.1": "11.0.5"
+    "afterPack": "scripts/after-pack.cjs",
+    "files": [
+      "site/**/*",
+      "!site/config.example.js",
+      "launcher/main.js",
+      "launcher/preload.js",
+      "launcher/content-manager.js",
+      "launcher/actools-bridge.js",
+      "launcher/telemetry/**/*",
+      "launcher/native/bsr-actools-bridge/dist/*.exe",
+      "launcher/native/bsr-actools-bridge/dist/*.dll",
+      "launcher/native/bsr-actools-bridge/dist/*.config",
+      "launcher/native/bsr-actools-bridge/dist/*.md",
+      "launcher/native/bsr-actools-bridge/dist/licenses/**/*"
+    ],
+    "asarUnpack": [
+      "launcher/native/bsr-actools-bridge/dist/*.exe",
+      "launcher/native/bsr-actools-bridge/dist/*.dll",
+      "launcher/native/bsr-actools-bridge/dist/*.config",
+      "launcher/native/bsr-actools-bridge/dist/*.md",
+      "launcher/native/bsr-actools-bridge/dist/licenses/**/*"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": "nsis",
+      "icon": "site/assets/foto/bsr.ico",
+      "artifactName": "BSR-Racing-Hub-Setup-${version}.${ext}"
     },
-    "devDependencies": {
-        "electron": "^45.2.3",
-        "electron-builder": "^26.18.0",
-        "rcedit": "^4.0.1"
-    },
-    "build": {
-        "appId": "com.bsr.racing",
-        "productName": "BSR Racing Hub",
-        "directories": {
-            "output": "dist/desktop"
-        },
-        "afterPack": "scripts/after-pack.cjs",
-        "files": [
-            "index.html",
-            "login.html",
-            "steam_callback.html",
-            "admin.html",
-            "api.js",
-            "config.js",
-            "main.js",
-            "actools-bridge.js",
-            "content-manager.js",
-            "telemetry/**/*",
-            "preload.js",
-            "app/**/*",
-            "assets/**/*",
-            "native/bsr-actools-bridge/dist/*.exe",
-            "native/bsr-actools-bridge/dist/*.dll",
-            "native/bsr-actools-bridge/dist/*.config",
-            "native/bsr-actools-bridge/dist/*.md",
-            "native/bsr-actools-bridge/dist/licenses/**/*",
-            "_headers"
-        ],
-        "asarUnpack": [
-            "native/bsr-actools-bridge/dist/*.exe",
-            "native/bsr-actools-bridge/dist/*.dll",
-            "native/bsr-actools-bridge/dist/*.config",
-            "native/bsr-actools-bridge/dist/*.md",
-            "native/bsr-actools-bridge/dist/licenses/**/*"
-        ],
-        "win": {
-            "signAndEditExecutable": false,
-            "target": "nsis",
-            "icon": "assets/foto/bsr.ico",
-            "artifactName": "BSR-Racing-Hub-Setup-${version}.${ext}"
-        },
-        "nsis": {
-            "oneClick": false,
-            "allowToChangeInstallationDirectory": true,
-            "createDesktopShortcut": true,
-            "createStartMenuShortcut": true,
-            "installerIcon": "assets/foto/bsr.ico",
-            "uninstallerIcon": "assets/foto/bsr.ico"
-        }
-    },
-    "dependencies": {
-        "yauzl": "3.4.0"
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "site/assets/foto/bsr.ico",
+      "uninstallerIcon": "site/assets/foto/bsr.ico"
     }
+  },
+  "dependencies": {
+    "yauzl": "3.4.0"
+  }
 }

@@ -15,7 +15,7 @@ let telemetryUploader = null;
 let contentManager = null;
 
 function loadBack4AppClientKey() {
-  const configPath = path.join(__dirname, 'config.js');
+  const configPath = path.join(__dirname, '..', 'site', 'config.js');
   const source = fs.readFileSync(configPath, 'utf8');
   const match = source.match(/window\.CLIENT_KEY\s*=\s*['"]([^'"]+)['"]/);
   if (!match || !match[1] || /^YOUR_|^PREENCHER/i.test(match[1])) {
@@ -83,22 +83,22 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    frame: false, // <-- IMPORTANTE: desativa a barra padrão do sistema
+    frame: false, // Uso a janela sem a moldura padrao do Windows.
     transparent: false,
     backgroundColor: '#080808',
     titleBarStyle: 'hidden',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'), // <-- CARREGA O PRELOAD
+      preload: path.join(__dirname, 'preload.js'), // Deixo aqui as funcoes que a interface pode chamar.
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false,
       webSecurity: true,
     },
-    icon: path.join(__dirname, 'assets/foto/favicon.png'),
+    icon: path.join(__dirname, '..', 'site', 'assets/foto/favicon.png'),
     show: false,
   });
 
-  mainWindow.loadFile('index.html');
+  mainWindow.loadFile(path.join(__dirname, '..', 'site', 'index.html'));
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!url.startsWith('file:')) event.preventDefault();
@@ -166,10 +166,6 @@ function createWindow() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
   createTray();
-
-  mainWindow.on('close', (event) => {
-    // Se quiser fechar realmente, remova o preventDefault
-  });
 }
 
 function createTray() {
@@ -190,7 +186,7 @@ function createTray() {
   });
 }
 
-// ── IPC PARA CONTROLE DA JANELA ──
+// Recebo os comandos de controle da janela enviados pelo preload.
 ipcMain.on('window-control', (event, action) => {
   switch (action) {
     case 'minimize':
@@ -209,7 +205,7 @@ ipcMain.on('window-control', (event, action) => {
   }
 });
 
-// ── TEMA ──
+// A interface consulta o tema atual do Windows por aqui.
 ipcMain.handle('get-theme', () => {
   return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
 });
@@ -221,7 +217,7 @@ ipcMain.handle('start-steam-login', (event, state) => {
   return beginDesktopSteamLogin(state);
 });
 
-// ── NOTIFICAÇÕES ──
+// Recebo as notificacoes disparadas pela interface.
 ipcMain.on('notify', (event, title, body) => {
   console.log(`[Notificação] ${title}: ${body}`);
 });
@@ -291,8 +287,9 @@ app.whenReady().then(async () => {
   protocol.handle('bsr', (request) => {
     const url = new URL(request.url);
     const relativePath = decodeURIComponent(url.pathname).replace(/^[/\\\\]+/, '');
-    const filePath = path.resolve(__dirname, relativePath);
-    const appRoot = path.resolve(__dirname) + path.sep;
+    const siteRoot = path.resolve(__dirname, '..', 'site');
+    const filePath = path.resolve(siteRoot, relativePath);
+    const appRoot = siteRoot + path.sep;
     if (!filePath.startsWith(appRoot)) return new Response('Caminho inválido', { status:403 });
     if (!fs.existsSync(filePath)) {
       console.warn('[main] Arquivo não encontrado:', filePath);

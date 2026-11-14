@@ -1,10 +1,10 @@
 # Publicação segura do BSR Hub
 
-O frontend e o launcher usam o aplicativo Back4App configurado em `config.js`. O App ID e as chaves de cliente identificam a aplicação, mas **não são segredos nem substituem permissões**. Chamadas REST diretas usam `CLIENT_KEY` (`X-Parse-Client-Key`); `JAVASCRIPT_KEY` fica reservada ao Parse JavaScript SDK. Nunca distribua `REST_API_KEY` nem `MASTER_KEY`. A proteção efetiva está no Cloud Code, nas sessões Parse, nas roles e nas CLPs.
+O frontend e o launcher usam o aplicativo Back4App configurado em `site/config.js`. O App ID e as chaves de cliente identificam a aplicação, mas **não são segredos nem substituem permissões**. Chamadas REST diretas usam `CLIENT_KEY` (`X-Parse-Client-Key`); `JAVASCRIPT_KEY` fica reservada ao Parse JavaScript SDK. Nunca distribua `REST_API_KEY` nem `MASTER_KEY`. A proteção efetiva está no Cloud Code, nas sessões Parse, nas roles e nas CLPs.
 
 ## 1. Configure as chaves do cliente
 
-Em **App Settings > Security & Keys**, obtenha o App ID e a JavaScript Key e gere/ative uma **Client Key**. Preencha `APP_ID`, `CLIENT_KEY`, `JAVASCRIPT_KEY` e `BASE_URL` em `config.js`. As chamadas REST do launcher e do uploader usam `X-Parse-Client-Key`; a JavaScript Key não é usada como cabeçalho REST. Nunca coloque a REST API Key nem a Master Key em arquivos distribuídos. Não envie valores de chave pelo chat.
+Em **App Settings > Security & Keys**, obtenha o App ID e a JavaScript Key e gere/ative uma **Client Key**. Preencha `APP_ID`, `CLIENT_KEY`, `JAVASCRIPT_KEY` e `BASE_URL` em `site/config.js`. As chamadas REST do launcher e do uploader usam `X-Parse-Client-Key`; a JavaScript Key não é usada como cabeçalho REST. Nunca coloque a REST API Key nem a Master Key em arquivos distribuídos. Não envie valores de chave pelo chat.
 
 ## 2. Publique o Cloud Code primeiro
 
@@ -15,7 +15,7 @@ Esse código é compatível com Parse Server 7/Node 18: usa `fetch` para validar
 Em **Server Settings > Config Vars** ou Parse Config, defina:
 
 - `STEAM_API_KEY`: Web API Key da Steam, usada somente pelo servidor para obter nome e avatar;
-- `STEAM_ALLOWED_CALLBACKS` (opcional): lista separada por vírgulas de callbacks HTTPS adicionais autorizados, com protocolo, host e caminho exatos. O callback oficial atual `https://brasilsimracing.com/steam_callback.html` permanece permitido mesmo quando esta variável estiver definida. O domínio anterior `https://bsrracing2.netlify.app/steam_callback.html` é aceito temporariamente durante a migração. O desktop continua restrito a loopback.
+- `STEAM_ALLOWED_CALLBACKS` (opcional): lista separada por vírgulas de callbacks HTTPS adicionais autorizados, com protocolo, host e caminho exatos. O callback oficial atual `https://brasilsimracing.com/site/steam_callback.html` permanece permitido mesmo quando esta variável estiver definida. O domínio anterior `https://bsrracing2.netlify.site/app/site/steam_callback.html` é aceito temporariamente durante a migração. O desktop continua restrito a loopback.
 
 O callback desktop usa temporariamente `http://127.0.0.1:<porta>/steam/callback`. Somente loopback é aceito.
 
@@ -25,7 +25,7 @@ O callback desktop usa temporariamente `http://127.0.0.1:<porta>/steam/callback`
 2. Em **Database > Role**, crie uma role com o nome exato `admin`.
 3. Adicione o usuário na relação `users` dessa role.
 4. Aposente a classe antiga `AdminUsers`; senha administrativa não deve existir em classes comuns.
-5. No launcher, abra **Admin**, entre com esse `_User` e aguarde a confirmação da role por `verifyAdminSession`. Se já houver uma sessão Steam, o launcher a preserva e restaura ao sair do modo administrativo. O endereço legado `admin.html` apenas redireciona para essa central integrada.
+5. No launcher, abra **Admin**, entre com esse `_User` e aguarde a confirmação da role por `verifyAdminSession`. Se já houver uma sessão Steam, o launcher a preserva e restaura ao sair do modo administrativo. O endereço legado `site/admin.html` apenas redireciona para essa central integrada.
 6. Para uma experiência de conta única, localize o `_User` criado pelo login Steam (nome de usuário `steam:<SteamID64>`) e adicione esse mesmo usuário à relação `users` da role `admin`. Nesse caso a central administrativa abre automaticamente após o login Steam, sem pedir uma segunda credencial.
 7. Nas configurações do Parse Server, mantenha sessões revogáveis habilitadas e configure duração compatível com 30 dias (`sessionLength: 2592000`).
 
@@ -94,15 +94,15 @@ O cliente apenas interpreta os arquivos e permite a revisão. BSR Rating, Safety
 
 Execute `npm run build:web` e publique apenas o conteúdo de `web-dist`. O arquivo `netlify.toml` já configura esse diretório e o `_headers` adiciona CSP e outros cabeçalhos de proteção.
 
-O deploy precisa incluir `login.html` e `steam_callback.html`; ambos estavam ausentes na versão online anterior. Publique Cloud Code e frontend na mesma janela de manutenção para não deixar o login em estado intermediário.
+O deploy precisa incluir `site/login.html` e `site/steam_callback.html`; ambos estavam ausentes na versão online anterior. Publique Cloud Code e frontend na mesma janela de manutenção para não deixar o login em estado intermediário.
 
 ## 6. Validação pós-deploy
 
-1. Abra `https://bsrracing2.netlify.app/login.html` e confirme o login Steam.
+1. Abra `https://bsrracing2.netlify.site/app/site/login.html` e confirme o login Steam.
 2. Feche e reabra o navegador/app: a sessão deve continuar válida até o logout, a expiração ou a revogação no Back4App.
 3. Confirme que uma chamada REST pública direta a `Driver`, `CarReservations`, `Reports` e `AuditLog` retorna acesso negado.
 4. Confirme que corridas, classificação e resultados continuam visíveis pelo launcher.
 5. Entre no admin com um usuário comum: o acesso deve ser negado. Entre com membro da role `admin`: o painel deve abrir.
 6. Revogue a sessão em `_Session` e confirme que a próxima chamada leva o usuário novamente ao login.
 
-Nunca coloque a Master Key, a Steam Web API Key ou credenciais administrativas em `config.js`, HTML, Electron renderer ou qualquer arquivo distribuído.
+Nunca coloque a Master Key, a Steam Web API Key ou credenciais administrativas em `site/config.js`, HTML, Electron renderer ou qualquer arquivo distribuído.

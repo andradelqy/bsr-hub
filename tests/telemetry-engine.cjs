@@ -1,8 +1,8 @@
 'use strict';
 const assert=require('assert'),dgram=require('dgram'),fs=require('fs'),os=require('os'),path=require('path');
-const {parseAcspPacket}=require('../telemetry/acsp-protocol');
-const {IncidentEngine}=require('../telemetry/incident-engine');
-const {createAcTelemetryCollector}=require('../telemetry/collector');
+const {parseAcspPacket}=require('../launcher/telemetry/acsp-protocol');
+const {IncidentEngine}=require('../launcher/telemetry/incident-engine');
+const {createAcTelemetryCollector}=require('../launcher/telemetry/collector');
 function narrow(v){const b=Buffer.from(v,'utf8');return Buffer.concat([Buffer.from([b.length]),b]);}
 function wide(v){const b=Buffer.alloc(v.length*4);for(let i=0;i<v.length;i++)b.writeUInt16LE(v.charCodeAt(i),i*4);return Buffer.concat([Buffer.from([v.length]),b]);}
 function f32(v){const b=Buffer.alloc(4);b.writeFloatLE(v);return b;}
